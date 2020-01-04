@@ -30,33 +30,40 @@
 #ifndef __LINE_WRITE__
 #define __LINE_WRITE__
 
+/*
+ * The following functions directly control the IO. They wrap to some very basic-level 
+ * functions such as sending and receiving bits on the line.
+ * The only more complicated functions are the line reset and the pin registers preparation
+ * 
+ * Note that this code is "decoupled" from the standard Arduino functions 
+ */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // Perform a line reset and the JTAG-SWD switching sequence
-void line_rst_switch_to_swd();
+void swd_line_rst_switch_to_swd();
 
 // Send up to 32 bits over the line
-void write_line(uint32_t val, uint8_t bit_length);
+void swd_write_line(uint32_t val, uint8_t bit_length);
 
 // Turn around from writing to reading
-void turn_around_to_input();
+void swd_turn_around_to_input();
 
 // Turn around from reading to writing
-void turn_around_to_output();
+void swd_turn_around_to_output();
 
-// Read 3-bit ACK response
-uint8_t read_ack();
+// Read 3-bit ACK response. 1 is OK, 2 is WAIT, 4 is ERROR
+uint8_t swd_read_ack();
 
 // Read up to 32 bits from the line
-uint32_t read_line(uint8_t bits);
+uint32_t swd_read_line(uint8_t bits);
 
 //void set_clock_delay_us(int us);
 
 // Setup the pins to use for the SWD and reset the target. IMPORTANT: swdio and swclk must be in the same port group (PA, PB, etc) - this lets us use the TGL register to match the rising/falling edges
-void prepare_pin_registers_and_reset_target (int swdio_pin, int swclk_pin, int nrst_pin);
+void swd_prepare_pin_registers_and_reset_target (int swdio_pin, int swclk_pin, int nrst_pin);
 
 #endif // __LINE_WRITE__
 

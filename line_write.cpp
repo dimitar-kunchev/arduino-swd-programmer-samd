@@ -33,9 +33,16 @@ int cfg_swclk_pin, cfg_swdio_pin, cfg_swrst_pin;
 
 volatile uint32_t * reg_clk_set;
 volatile uint32_t * reg_clk_clr;
+volatile uint8_t * reg_clk_pincfg;
+volatile uint32_t * reg_clk_dirset;
+volatile uint32_t * reg_clk_dirclr;
+
 volatile uint32_t * reg_dat_set;
 volatile uint32_t * reg_dat_clr;
 volatile uint32_t * reg_dat_in_val;
+volatile uint8_t * reg_dat_pincfg;
+volatile uint32_t * reg_dat_dirset;
+volatile uint32_t * reg_dat_dirclr;
 
 volatile uint32_t * reg_out_clk_tgl;
 uint32_t reg_out_clk_tgl_mask;
@@ -52,8 +59,8 @@ uint32_t reg_dat_mask;
 #define DAT_LOW()   *reg_dat_clr=reg_dat_mask; data_is_high=false;
 
 // @TODO: These should use direct registers instead
-#define DAT_SET_OUTPUT() pinMode(cfg_swdio_pin, OUTPUT); data_line_is_input = false;
-#define DAT_SET_INPUT()  pinMode(cfg_swdio_pin, INPUT_PULLUP); data_line_is_input = true;
+#define DAT_SET_OUTPUT() *reg_dat_pincfg = PORT_PINCFG_INEN /*|PORT_PINCFG_DRVSTR*/; *reg_dat_dirset=reg_dat_mask; data_line_is_input = false;    /* pinMode(cfg_swdio_pin, OUTPUT);*/ 
+#define DAT_SET_INPUT()  *reg_dat_pincfg = PORT_PINCFG_INEN|PORT_PINCFG_PULLEN; *reg_dat_dirclr=reg_dat_mask; *reg_dat_set=reg_dat_mask; data_line_is_input = true; /* pinMode(cfg_swdio_pin, INPUT_PULLUP); */ 
 
 #define DAT_GET_VAL() ((*reg_dat_in_val & reg_dat_mask)!=0)
 
@@ -81,7 +88,7 @@ static inline void write_val_clock_falling(bool high) {
 }
 
 // Write multiple bits over the line. This should be used only for the JTAG-SWD switching
-void write_line_falling(char * buf, uint8_t bit_length) {
+static void write_line_falling(char * buf, uint8_t bit_length) {
   char * bl = buf;
   char bit_index = 0;
   DAT_SET_OUTPUT();
@@ -91,7 +98,7 @@ void write_line_falling(char * buf, uint8_t bit_length) {
 }
 
 // Clock multiple bits with fixed data line. This is used for the line reset sequence only
-void write_line_fixed(int clocks, bool high) {
+static void write_line_fixed(int clocks, bool high) {
   if (high) {
     DAT_HIGH();
   } else {
@@ -124,7 +131,7 @@ static inline void write_val_clock_rising(bool high) {
 }
 
 // Write multiple bits on the line (up to 32)
-void write_line(uint32_t val, uint8_t bit_length) {
+void swd_write_line(uint32_t val, uint8_t bit_length) {
   if (data_line_is_input) {
     DAT_SET_OUTPUT();
     DAT_HIGH();
@@ -158,7 +165,7 @@ static uint8_t inline read_dat_rising_edge() {
 }*/
 
 // Read up to 32 bits from the line
-uint32_t read_line(uint8_t bits) {
+uint32_t swd_read_line(uint8_t bits) {
   uint32_t res = 0;
   for (int i = 0; i < bits; i ++) {
     res |= read_dat_falling_edge() << i;
@@ -170,24 +177,31 @@ uint32_t read_line(uint8_t bits) {
 /// 
 ///
 
+// a simple delay used while we are resetting the line
+static inline void delay_during_rst() {
+  for (int i = 0; i < 1000; i ++) {
+    asm("nop");
+  }
+}
+
 // Execute the line reset sequence: 
 // clock 51 high bits, write the JTAG-SWD switching sequence, clock 51 more high bits, clock 8 low bits
-void line_rst_switch_to_swd() {
+void swd_line_rst_switch_to_swd() {
   write_line_fixed(51, true);
   CLK_HIGH();
-  delay(1);
+  delay_during_rst();
   char buf[2] = {0x9E, 0xE7};
   write_line_falling(buf, 16);
   CLK_HIGH();
-  delay(1);
+  delay_during_rst();
   write_line_fixed(51, true);
   CLK_HIGH();
-  delay(1);
+  delay_during_rst();
   write_line_fixed(8, false);
   CLK_HIGH();
 }
 
-void turn_around_to_input() {
+void swd_turn_around_to_input() {
   CLK_HIGH(); 
   CLK_DELAY();
   DAT_SET_INPUT();
@@ -195,7 +209,7 @@ void turn_around_to_input() {
   CLK_DELAY();
 }
 
-void turn_around_to_output() {
+void swd_turn_around_to_output() {
   CLK_HIGH();
   CLK_DELAY();
   DAT_SET_OUTPUT();
@@ -204,15 +218,15 @@ void turn_around_to_output() {
 
 ////
 
-uint8_t read_ack() {
-  return read_line(3);
+uint8_t swd_read_ack() {
+  return swd_read_line(3);
 }
 //void set_clock_delay_us(int us) {
   //clk_delay_time = us;
 //}
 
 /// Prepare the IO pins and reset the target
-void prepare_pin_registers_and_reset_target (int swdio_pin, int swclk_pin, int nrst_pin) {
+void swd_prepare_pin_registers_and_reset_target (int swdio_pin, int swclk_pin, int nrst_pin) {
   cfg_swdio_pin = swdio_pin;
   cfg_swclk_pin = swclk_pin;
   cfg_swrst_pin = nrst_pin;
@@ -220,29 +234,40 @@ void prepare_pin_registers_and_reset_target (int swdio_pin, int swclk_pin, int n
   reg_clk_set = &(PORT->Group[g_APinDescription[cfg_swclk_pin].ulPort].OUTSET.reg);
   reg_clk_clr = &(PORT->Group[g_APinDescription[cfg_swclk_pin].ulPort].OUTCLR.reg);
   reg_clk_mask = (1ul << g_APinDescription[cfg_swclk_pin].ulPin);
+  reg_clk_pincfg = &(PORT->Group[g_APinDescription[cfg_swclk_pin].ulPort].PINCFG[g_APinDescription[cfg_swclk_pin].ulPin].reg);
+  reg_clk_dirset = &(PORT->Group[g_APinDescription[cfg_swclk_pin].ulPort].DIRSET.reg);
+  reg_clk_dirclr = &(PORT->Group[g_APinDescription[cfg_swclk_pin].ulPort].DIRCLR.reg);
 
   reg_dat_set = &(PORT->Group[g_APinDescription[cfg_swdio_pin].ulPort].OUTSET.reg);
   reg_dat_clr = &(PORT->Group[g_APinDescription[cfg_swdio_pin].ulPort].OUTCLR.reg);
   reg_dat_in_val = &(PORT->Group[g_APinDescription[cfg_swdio_pin].ulPort].IN.reg);
   reg_dat_mask = (1ul << g_APinDescription[cfg_swdio_pin].ulPin);
+  reg_dat_pincfg = &(PORT->Group[g_APinDescription[cfg_swdio_pin].ulPort].PINCFG[g_APinDescription[cfg_swdio_pin].ulPin].reg);
+  reg_dat_dirset = &(PORT->Group[g_APinDescription[cfg_swdio_pin].ulPort].DIRSET.reg);
+  reg_dat_dirclr = &(PORT->Group[g_APinDescription[cfg_swdio_pin].ulPort].DIRCLR.reg);
 
   // We use the toggle register to match the edges of the clock and data 
   assert(g_APinDescription[cfg_swdio_pin].ulPort == g_APinDescription[cfg_swclk_pin].ulPort); 
   reg_out_clk_tgl = &(PORT->Group[g_APinDescription[cfg_swdio_pin].ulPort].OUTTGL.reg);
   reg_out_clk_tgl_mask = (1ul << g_APinDescription[cfg_swdio_pin].ulPin) | (1ul << g_APinDescription[cfg_swclk_pin].ulPin);
 
-  pinMode(cfg_swrst_pin, OUTPUT);
-  digitalWrite(cfg_swrst_pin, LOW);
+  //pinMode(cfg_swrst_pin, OUTPUT);
+  PORT->Group[g_APinDescription[cfg_swrst_pin].ulPort].DIRSET.reg = 1 << g_APinDescription[cfg_swrst_pin].ulPin;
+  //digitalWrite(cfg_swrst_pin, LOW);
+  PORT->Group[g_APinDescription[cfg_swrst_pin].ulPort].OUTCLR.reg = 1 << g_APinDescription[cfg_swrst_pin].ulPin;
   
-  pinMode(cfg_swclk_pin, OUTPUT);
+  //pinMode(cfg_swclk_pin, OUTPUT);
   // Use high drive strength for the clock! The internal pull-up of the target is sometimes too strong for us
-  PORT->Group[g_APinDescription[cfg_swclk_pin].ulPort].PINCFG[g_APinDescription[cfg_swclk_pin].ulPin].bit.DRVSTR = 1;
+  //PORT->Group[g_APinDescription[cfg_swclk_pin].ulPort].PINCFG[g_APinDescription[cfg_swclk_pin].ulPin].bit.DRVSTR = 1;
+  *reg_clk_pincfg = PORT_PINCFG_INEN|PORT_PINCFG_DRVSTR; // no pull, no mux; input enable to allow read-backs
+  *reg_clk_dirset = reg_clk_mask;
   
   CLK_LOW(); // set it low for cold-plugging of the debugger. We can set it high just as well - doesn't really matter
   DAT_LOW();
   DAT_SET_OUTPUT();
 
   delay(125);
-  digitalWrite(cfg_swrst_pin, HIGH);
+  //digitalWrite(cfg_swrst_pin, HIGH);
+  PORT->Group[g_APinDescription[cfg_swrst_pin].ulPort].OUTSET.reg = 1 << g_APinDescription[cfg_swrst_pin].ulPin;
   delay(125);
 }

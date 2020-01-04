@@ -61,12 +61,12 @@ retry_read_reg:
   uint8_t request = build_request(addr, is_ap_reg, true);
   *res = 0;
   
-  write_line(request, 8);  // Write the request
-  turn_around_to_input();
+  swd_write_line(request, 8);  // Write the request
+  swd_turn_around_to_input();
 
-  uint8_t ack = read_ack(); // read the ACK
+  uint8_t ack = swd_read_ack(); // read the ACK
   if (ack != 1) {
-    turn_around_to_output();
+    swd_turn_around_to_output();
     
     if (ack == 2) { // wait
       delayMicroseconds(10);
@@ -85,10 +85,10 @@ retry_read_reg:
     return false;
   }
   
-  *res = read_line(32);
+  *res = swd_read_line(32);
   
-  uint8_t parity_bit = read_line(1); // read parity
-  turn_around_to_output();
+  uint8_t parity_bit = swd_read_line(1); // read parity
+  swd_turn_around_to_output();
 
   // Serial.println("ACK OK");
   if (parity_bit != calc_parity(*res)) {
@@ -101,10 +101,10 @@ retry_read_reg:
 bool write_reg(uint8_t addr, bool is_ap_reg, uint32_t val) {
   uint8_t request = build_request(addr, is_ap_reg, false);
   
-  write_line(request, 8);  // Write the request
-  turn_around_to_input();
+  swd_write_line(request, 8);  // Write the request
+  swd_turn_around_to_input();
 
-  uint8_t ack = read_ack(); // read the ACK
+  uint8_t ack = swd_read_ack(); // read the ACK
   if (ack != 1) {
     Serial.print("ACK ERR in reg write ");
     Serial.print(addr, HEX);
@@ -115,10 +115,10 @@ bool write_reg(uint8_t addr, bool is_ap_reg, uint32_t val) {
     return false;
   }
   
-  turn_around_to_output();
+  swd_turn_around_to_output();
   uint8_t parity_bit = calc_parity(val);
-  write_line(val, 32);
-  write_line(parity_bit, 1);
+  swd_write_line(val, 32);
+  swd_write_line(parity_bit, 1);
   
   // Serial.println("ACK OK"); 
   return ack == 1;
@@ -288,13 +288,10 @@ void setup() {
   
   // Prepare registers we will be using, allowing us to switch pins quickly, instead of using the slow Arduino functions
   // Reset the target, prep clk/data pins
-  prepare_pin_registers_and_reset_target(SWDIO, SWCLK, SWRST);
-
-  // switch to quicker clocks
-  //set_clock_delay_us(4);
-  line_rst_switch_to_swd();
-  //set_clock_delay_us(1);
-  delayMicroseconds(500);
+  swd_prepare_pin_registers_and_reset_target(SWDIO, SWCLK, SWRST);
+  swd_line_rst_switch_to_swd();
+  
+  delay(1); // give some time the target to wake up. not really needed...
 
   // let's get busy
   read_id_code();
