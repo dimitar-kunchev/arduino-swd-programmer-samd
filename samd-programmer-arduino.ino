@@ -232,6 +232,7 @@ uint32_t read_did() {
   }
 }
 
+// read the DSU ctrl/statusA/statusB register. The returned uint32 has as its right-most octet the CTRL bits
 uint32_t read_dsu_ctrl_status() {
   Serial.print("Read DSU CTRL Status: ");
   uint32_t res = 0;
@@ -305,6 +306,24 @@ void read_fuses() {
     Serial.print(fuse_bytes[i], HEX);
   }
   Serial.println();
+}
+
+void chip_erase() {
+  uint32_t ctrl_status = read_dsu_ctrl_status();
+  Serial.println("Erasing chip...");
+  write_word(DAP_DSU_CTRL_STATUS, 0x00001f00); // Clear flags
+  write_word(DAP_DSU_CTRL_STATUS, 0x00000010); // Chip erase
+  delay(100);
+  int retries = 600;
+  while (retries > 0) {
+    ctrl_status = read_dsu_ctrl_status();
+    if ((ctrl_status & 0x00000100) != 0) { // check the DONE flag
+      break;
+    }
+    retries --;
+    delay(100);
+  };
+  Serial.println("Done");
 }
 
 void setup() {
@@ -413,6 +432,9 @@ void setup() {
 
   //read_user_mem();
   read_fuses();
+
+  // erase chip
+  chip_erase();
 }
 
 void loop() {
