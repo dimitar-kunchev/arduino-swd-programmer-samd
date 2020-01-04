@@ -30,7 +30,7 @@ static inline uint32_t build_request(uint8_t addr, bool is_ap_reg, bool is_read)
 
 bool read_reg(uint8_t addr, bool is_ap_reg, uint32_t * res) {
   int attempts_to_read_reg = 0;
-  retry_read_reg:
+retry_read_reg:
   uint8_t request = build_request(addr, is_ap_reg, true);
   *res = 0;
   
@@ -44,7 +44,7 @@ bool read_reg(uint8_t addr, bool is_ap_reg, uint32_t * res) {
     if (ack == 2) { // wait
       delayMicroseconds(10);
       if (attempts_to_read_reg < 10) {
-        Serial.println("ACK WAIT: retrying");
+        Serial.print("wait... ");
         attempts_to_read_reg ++;
         goto retry_read_reg;
       }
@@ -63,11 +63,11 @@ bool read_reg(uint8_t addr, bool is_ap_reg, uint32_t * res) {
   uint8_t parity_bit = read_line(1); // read parity
   turn_around_to_output();
 
-  Serial.println("ACK OK");
+  // Serial.println("ACK OK");
   if (parity_bit != calc_parity(*res)) {
     Serial.println("Parity mismatch");
   }
-  Serial.println(*res, HEX);
+  // Serial.println(*res, HEX);
   return true;
 }
 
@@ -93,63 +93,66 @@ bool write_reg(uint8_t addr, bool is_ap_reg, uint32_t val) {
   write_line(val, 32);
   write_line(parity_bit, 1);
   
-  Serial.println("ACK OK"); 
+  // Serial.println("ACK OK"); 
   return ack == 1;
 }
 
 uint32_t read_id_code() {
-  Serial.println("ID Code");
+  Serial.print("Read ID Code: ");
   uint32_t id_code = 0;
   read_reg(SWD_DP_REG_IDCODE, false, &id_code);
   return id_code;
 }
 
 uint32_t read_ctrl_stat() {
-  Serial.println("CTRL/STAT");
+  Serial.print("Read CTRL/STAT: ");
   uint32_t ctrl_stat = 0;
   read_reg(SWD_DP_REG_CTRL_STAT, false, &ctrl_stat);
+  Serial.println(ctrl_stat, HEX);
   return ctrl_stat;
 }
 
 uint32_t read_read_buf() {
-  Serial.println("READ BUF");
+  Serial.print("Read READ BUF: ");
   uint32_t read_buf = 0;
   if (!read_reg(SWD_DP_REG_RDBUFF, false, &read_buf)) {
     Serial.println(read_ctrl_stat());
     while(1);
   }
+  Serial.print("0x"); Serial.println(read_buf, HEX);
   return read_buf;
 }
 
 bool write_ctrl_stat(uint32_t val) {
-  Serial.println("Write CTRL STAT");
+  Serial.print("Write CTRL STAT 0x");
+  Serial.println(val, HEX);
   return write_reg(SWD_DP_REG_CTRL_STAT, false, val);
 }
 
 bool write_abort(uint32_t val) {
-  Serial.println("W ABORT");
+  Serial.print("Write ABORT 0x");
+  Serial.println(val, HEX);
   return write_reg(SWD_DP_REG_ABORT, false, val);
 }
 
 bool write_select(uint32_t val) {
-  Serial.println("W SELECT");
+  Serial.print("Write SELECT 0x");
+  Serial.println(val, HEX);
   return write_reg(SWD_DP_REG_SELECT, false, val);
 }
 
 ///
 
 bool write_csw(uint32_t val) {
-  Serial.println("W AP CSW");
+  Serial.print("Write AP CSW 0x");
+  Serial.println(val, HEX);
   return write_reg(SWD_AP_REG_CSW, true, 0x23000012);
 }
 
 //
 
-uint32_t read_word(uint32_t addr) {
-  uint32_t res = 0;
-  write_reg(SWD_AP_REG_TAR, true, addr);
-  read_reg(SWD_AP_REG_DRW, true, &res);
-  return res;
+bool read_word(uint32_t addr, uint32_t * res) {
+  return (write_reg(SWD_AP_REG_TAR, true, addr) && read_reg(SWD_AP_REG_DRW, true, res));
 }
 
 bool write_word(uint32_t addr, uint32_t data) {
@@ -170,10 +173,11 @@ void stop_core() {
 }
 
 uint32_t read_did() {
-  Serial.println("Read DSU DID");
-  if (read_word(DAP_DSU_DID) == 0) {
+  Serial.print("Read DSU DID: ");
+  uint32_t tmp;
+  if (read_word(DAP_DSU_DID, &tmp)) {
     uint32_t did = read_read_buf();
-    Serial.print("DID: 0x"); Serial.println(did, HEX);
+    Serial.println(did, HEX);
     return did;
   } else {
     return 0;
@@ -208,6 +212,8 @@ void setup() {
   write_select(0x00);
   read_read_buf();  // should return 0
 
+  Serial.println("Power-up the system and debug domains");
+
   // power-up and debug power-up request
   write_ctrl_stat((1 << 30) | (1 << 28));// CSYSPWRUPREQ | CDBGPRWUPREQ
   read_read_buf();  // should return 0
@@ -221,13 +227,15 @@ void setup() {
     }
   }
 
-  // abort?
+  // abort
   write_abort(0x0000001E);
   read_ctrl_stat();
   
   // Debug start request
   // Technically what we should do is: write bit 26 (CDBGRSTREQ) of the CTRL/STAT, wait until bit 27 (CDBGRSTACK) is set and then clear bit 26. 
   // However it seems the Atmel ICE gives up after few ms
+
+  Serial.println("Attempt debugger core reset\r\n");
 
   for (int i = 0; i < 20; i ++){
     write_ctrl_stat((1 << 30) | (1 << 28) | (1 << 26));// CSYSPWRUPREQ | CDBGPRWUPREQ | CDBGRSTREQ
@@ -244,13 +252,30 @@ void setup() {
   if (!(ctrl_stat & (1 << 27))) {
     Serial.println("Debugger reset request doesn't seem to work...");
   }
+
+  // clear the CDBGRSTREQ - whether it was successfull or not!
+  write_ctrl_stat((1 << 30) | (1 << 28));// CSYSPWRUPREQ | CDBGPRWUPREQ
+  read_read_buf();
+  ctrl_stat = read_ctrl_stat();
   
   write_csw(0x23000052);
   read_read_buf();
 
   stop_core();
-  
-  read_did(); // should be 0x60060004 for SAMD51J20A
+
+  // Read device ID. Takes few attempts sometimes
+  for (int i = 0; i < 10; i ++) {
+    if (read_did() == 0) { // should be 0x60060004 for SAMD51J20A
+      ctrl_stat = read_ctrl_stat();
+      if (ctrl_stat & (1 << 5)) {
+        write_abort(0x0000001E);
+        read_ctrl_stat();
+      }
+    } else {
+      break;
+    }
+  }
+
   
 }
 
