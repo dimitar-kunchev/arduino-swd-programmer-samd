@@ -47,7 +47,7 @@ static inline uint32_t build_request(uint8_t addr, bool is_ap_reg, bool is_read)
     request |= 1 << 1;            // set APnDP bit
   }
   if (is_read) {
-    request |= 1 << 2;              // set RnW bit
+    request |= 1 << 2;            // set RnW bit
   }
   request |= (addr & 0x0C) << 1;  // set ADDR[2:3] bits
   request |= calc_parity(request) << 5; //set parity
@@ -65,10 +65,10 @@ retry_read_reg:
   swd_turn_around_to_input();
 
   uint8_t ack = swd_read_ack(); // read the ACK
-  if (ack != 1) {
+  if (ack != SWD_ACK_OK) {
     swd_turn_around_to_output();
     
-    if (ack == 2) { // wait
+    if (ack == SWD_ACK_WAIT) {
       delayMicroseconds(10);
       if (attempts_to_read_reg < 10) {
         Serial.print("wait... ");
@@ -76,6 +76,7 @@ retry_read_reg:
         goto retry_read_reg;
       }
     } else {
+      // ack == SWD_ACK_ERR
       Serial.print("ACK ERR in reg read ");
       Serial.print(addr, HEX);
       Serial.print(" AP: "); Serial.print(is_ap_reg ? "Y" : "N");
@@ -99,20 +100,31 @@ retry_read_reg:
 }
 
 bool write_reg(uint8_t addr, bool is_ap_reg, uint32_t val) {
+  int attempts_to_write_reg = 0;
+retry_write_reg:
   uint8_t request = build_request(addr, is_ap_reg, false);
   
   swd_write_line(request, 8);  // Write the request
   swd_turn_around_to_input();
 
   uint8_t ack = swd_read_ack(); // read the ACK
-  if (ack != 1) {
-    Serial.print("ACK ERR in reg write ");
-    Serial.print(addr, HEX);
-    Serial.print(" AP: "); Serial.print(is_ap_reg ? "Y" : "N");
-    Serial.print(" val: "); Serial.print(val, HEX);
-    Serial.print(" ack: ");
-    Serial.println(ack);
-    return false;
+  if (ack != SWD_ACK_OK) {
+    if (ack == SWD_ACK_WAIT) {
+      delayMicroseconds(10);
+      if (attempts_to_write_reg < 10) {
+        Serial.print("wait... ");
+        attempts_to_write_reg ++;
+        goto retry_write_reg;
+      }
+    } else {
+      Serial.print("ACK ERR in reg write ");
+      Serial.print(addr, HEX);
+      Serial.print(" AP: "); Serial.print(is_ap_reg ? "Y" : "N");
+      Serial.print(" val: "); Serial.print(val, HEX);
+      Serial.print(" ack: ");
+      Serial.println(ack);
+      return false;
+    }
   }
   
   swd_turn_around_to_output();
@@ -173,7 +185,15 @@ bool write_select(uint32_t val) {
 bool write_csw(uint32_t val) {
   Serial.print("Write AP CSW 0x");
   Serial.println(val, HEX);
-  return write_reg(SWD_AP_REG_CSW, true, 0x23000012);
+  return write_reg(SWD_AP_REG_CSW, true, val);
+}
+uint32_t read_csw() {
+  uint32_t val;
+  if (read_reg(SWD_AP_REG_CSW, true, &val)) {
+    val = read_read_buf();
+  }
+  Serial.print("Read CSW: 0x"); Serial.println(val, HEX);
+  return val;
 }
 
 //
@@ -196,6 +216,7 @@ void stop_core() {
   write_word(DEMCR, 0x00100501); // ICE writes 1000001 to DEMCR?
   read_read_buf();
   write_word(AIRCR, 0x05fa0004);
+  
   Serial.println("Core stopped\r\n");
 }
 
@@ -221,20 +242,16 @@ uint32_t read_dsu_ctrl_status() {
   return res;
 }
 
-//
+/// Block Operations
 
-bool read_block_ap_reg(uint8_t reg, uint8_t * res, uint32_t size) {
-  
-}
-
+// IMPORTANT: Use sizes, multiples of 4
 bool read_block(uint32_t address, uint8_t * res, int size) {
-  write_csw(0x23000052); // increment single, size = 32;
+  //write_csw(0x23000052); // increment single, size = 32;    // 
+  write_csw(SWD_REG_MEM_AP_CSW_Prot(35) | SWD_REG_MEM_AP_CSW_AddrInc_Single | SWD_REG_MEM_AP_CSW_Size_Word);
 
   if (!write_reg(SWD_AP_REG_TAR, true, address)) {
     return false;
   }
-
-  //read_ctrl_stat();
   
   int read_bytes = 0;
   uint32_t cr;
@@ -244,11 +261,8 @@ bool read_block(uint32_t address, uint8_t * res, int size) {
   
   while (read_bytes < size) {
     read_reg(SWD_AP_REG_DRW, true, &cr);
-    
-    res[read_bytes] =   (cr >> 24) & 0xff;
-    res[read_bytes+1] = (cr >> 16) & 0xff;
-    res[read_bytes+2] = (cr >> 8)  & 0xff;
-    res[read_bytes+3] =  cr        & 0xff;
+
+    memcpy(&(res[read_bytes]), &cr, 4);
     read_bytes += 4;
   }
 
@@ -259,9 +273,9 @@ bool read_block(uint32_t address, uint8_t * res, int size) {
 
 void read_user_mem() {
   Serial.println("Read user mem");
-  uint8_t fuse_bytes[512];
-  memset(fuse_bytes, 0, 512);
-  if (!read_block(USER_ROW_ADDR, fuse_bytes, 512)) {
+  uint8_t user_bytes[512];
+  memset(user_bytes, 0, 512);
+  if (!read_block(USER_ROW_ADDR, user_bytes, 512)) {
     return;
   }
   Serial.println("Contents:");
@@ -269,11 +283,28 @@ void read_user_mem() {
     if (i%4 == 0) {
       Serial.print(" 0x");
     }
-    Serial.print(fuse_bytes[i], HEX);
+    Serial.print(user_bytes[i], HEX);
     if (i%8 == 7) {
       Serial.println();
     }
   }
+}
+
+void read_fuses() {
+  Serial.println("Read fuses");
+  uint8_t fuse_bytes[32];
+  memset(fuse_bytes, 0, 32);
+  if (!read_block(USER_ROW_ADDR, fuse_bytes, 32)) {
+    return;
+  }
+  Serial.println("Fuses contents:");
+  for (int i = 0; i < 32; i ++) {
+    if (i%4 == 0) {
+      Serial.print(" 0x");
+    }
+    Serial.print(fuse_bytes[i], HEX);
+  }
+  Serial.println();
 }
 
 void setup() {
@@ -298,17 +329,17 @@ void setup() {
   uint32_t ctrl_stat = read_ctrl_stat();
   read_read_buf();
 
-  write_select(0x00);
+  write_select(0x00); // select the mem/ap
   read_read_buf();  // should return 0
 
   Serial.println("Power-up the system and debug domains");
 
   // power-up and debug power-up request
-  write_ctrl_stat((1 << 30) | (1 << 28));// CSYSPWRUPREQ | CDBGPRWUPREQ
+  write_ctrl_stat(SWD_REG_CTRL_STAT_CSYSPWRUPREQ | SWD_REG_CTRL_STAT_CDBGPWRUPREQ);
   read_read_buf();  // should return 0
   ctrl_stat = read_ctrl_stat();
   for (int i = 0; i < 100; i ++){
-    if ((ctrl_stat & (1 << 31)) && (ctrl_stat & (1 << 29)) && (ctrl_stat & (1 << 6))) { // check READOK
+    if ((ctrl_stat & SWD_REG_CTRL_STAT_CSYSPWRUPACK) && (ctrl_stat & SWD_REG_CTRL_STAT_CDBGPWRUPACK)) {
       Serial.println("Power-up requests complete");
       break;
     } else {
@@ -316,48 +347,50 @@ void setup() {
     }
   }
 
-  // abort
-  write_abort(0x0000001E);
-  read_ctrl_stat();
+  // check if there are any stick errors set and clear them if needed
+  ctrl_stat = read_ctrl_stat();
+  if (ctrl_stat & (SWD_REG_CTRL_STAT_WDATAERR|SWD_REG_CTRL_STAT_STICKYERR|SWD_REG_CTRL_STAT_STICKYCMP|SWD_REG_CTRL_STAT_STICKYORUN)) {
+    write_abort(SWD_REG_ABORT_Clear_All);
+  }
   
   // Debug start request
   // Technically what we should do is: write bit 26 (CDBGRSTREQ) of the CTRL/STAT, wait until bit 27 (CDBGRSTACK) is set and then clear bit 26. 
   // However it seems the Atmel ICE gives up after few ms
-
+  // It would appear this is NOT actually implemented in the CPU.
+  /*
   Serial.println("Attempt debugger core reset\r\n");
-
   for (int i = 0; i < 20; i ++){
-    write_ctrl_stat((1 << 30) | (1 << 28) | (1 << 26));// CSYSPWRUPREQ | CDBGPRWUPREQ | CDBGRSTREQ
+    write_ctrl_stat(SWD_REG_CTRL_STAT_CSYSPWRUPREQ | SWD_REG_CTRL_STAT_CDBGPWRUPREQ | SWD_REG_CTRL_STAT_CDBGRSTREQ);
     read_read_buf();  // should return 0
     ctrl_stat = read_ctrl_stat();
-    if ((ctrl_stat & (1 << 27))) {
+    if ((ctrl_stat & SWD_REG_CTRL_STAT_CDBGRSTACK)) {
       Serial.println("Debugger reset request complete");
-      write_ctrl_stat((1 << 30) | (1 << 28) | (15 << 8));// CSYSPWRUPREQ | CDBGPRWUPREQ | MASKLANE=15
       break;
     } else {
       delayMicroseconds(100);
     }
   }
-  if (!(ctrl_stat & (1 << 27))) {
+  if (!(ctrl_stat & SWD_REG_CTRL_STAT_CDBGRSTACK)) {
     Serial.println("Debugger reset request doesn't seem to work...");
   }
-
-  // clear the CDBGRSTREQ - whether it was successfull or not!
-  write_ctrl_stat((1 << 30) | (1 << 28));// CSYSPWRUPREQ | CDBGPRWUPREQ
+  
+  // clear the CDBGRSTREQ - whether it was successfull or not we need to release the reset
+  write_ctrl_stat(SWD_REG_CTRL_STAT_CSYSPWRUPREQ | SWD_REG_CTRL_STAT_CDBGPWRUPREQ); // | SWD_REG_CTRL_STAT_MASKLANE(0xF)
   read_read_buf();
   ctrl_stat = read_ctrl_stat();
+  */
   
-  write_csw(0x23000052);
+  write_csw(SWD_REG_MEM_AP_CSW_Prot(35) | SWD_REG_MEM_AP_CSW_AddrInc_Single | SWD_REG_MEM_AP_CSW_Size_Word);
   read_read_buf();
 
   stop_core();
 
-  // Read device ID. Takes few attempts sometimes
+  // Read device ID. Takes few attempts sometimes and raises sticy error. Don't know why
   for (int i = 0; i < 10; i ++) {
     if (read_did() == 0) { // should be 0x60060004 for SAMD51J20A
       ctrl_stat = read_ctrl_stat();
-      if (ctrl_stat & (1 << 5)) {
-        write_abort(0x0000001E);
+      if (ctrl_stat & SWD_REG_CTRL_STAT_STICKYERR) {
+        write_abort(SWD_REG_ABORT_Clear_All);
         read_ctrl_stat();
       }
     } else {
@@ -365,13 +398,21 @@ void setup() {
     }
   }
 
-  if (read_dsu_ctrl_status() & 0x00010000) {
-    // Note that the result is flipped. 0x8120000 is what I usually get. First byte of that 0x03 offset, second is 0x02, etc. So that value means DBGPRES and HPE are set (and something in the reserved space)
-    Serial.println("Locked - fail");
+  // Check if DeviceEn bit is set 
+  if (! (read_csw() & SWD_REG_MEM_AP_CSW_DeviceEn)) {
+    Serial.println("CSW.DeviceEn bit not set - error");
     while(1);
   }
 
-  read_user_mem();
+  // Check if device security bit is set
+  if (read_dsu_ctrl_status() & 0x00010000) {
+    // Note that the result is flipped. 0x8120000 is what I usually get. First byte of that 0x03 offset, second is 0x02, etc. So that value means DBGPRES and HPE are set (and something in the reserved space)
+    Serial.println("Security bit is set");
+    while(1);
+  }
+
+  //read_user_mem();
+  read_fuses();
 }
 
 void loop() {
