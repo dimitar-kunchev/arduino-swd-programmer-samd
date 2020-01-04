@@ -223,36 +223,57 @@ uint32_t read_dsu_ctrl_status() {
 
 //
 
-bool read_block(uint32_t addr, uint8_t * data, int size) {
-  int max_size = (32 - 5) & ~3;
-  int offs = 0;
+bool read_block_ap_reg(uint8_t reg, uint8_t * res, uint32_t size) {
+  
+}
 
-  while (size) {
-    int align, sz;
-    uint8_t buf[1024];
+bool read_block(uint32_t address, uint8_t * res, int size) {
+  write_csw(0x23000052); // increment single, size = 32;
 
-    align = 0x400 - (addr - (addr & ~0x3ff));
-    sz = (size > max_size) ? max_size : size;
-    sz = (sz > align) ? align : sz;
-
-    if (!write_reg(SWD_AP_REG_TAR, true, addr)) {
-      return false;
-    }
-
-//    buf[0] = ID_DAP_TRANSFER_BLOCK;
-//    buf[1] = 0x00; // DAP index
-//    buf[2] = (sz / 4) & 0xff;
-//    buf[3] = ((sz / 4) >> 8) & 0xff;
-//    buf[4] = SWD_AP_DRW | DAP_TRANSFER_RnW | DAP_TRANSFER_APnDP;
-//    dbg_dap_cmd(buf, sizeof(buf), 5);
-
-    memcpy(&data[offs], &buf[3], sz);
-
-    size -= sz;
-    addr += sz;
-    offs += sz;
+  if (!write_reg(SWD_AP_REG_TAR, true, address)) {
+    return false;
   }
+
+  //read_ctrl_stat();
+  
+  int read_bytes = 0;
+  uint32_t cr;
+
+  // I don't understand why but we need to do one read first that contains some old information. After that it all goes well. I think
+  read_reg(SWD_AP_REG_DRW, true, &cr);
+  
+  while (read_bytes < size) {
+    read_reg(SWD_AP_REG_DRW, true, &cr);
+    
+    res[read_bytes] =   (cr >> 24) & 0xff;
+    res[read_bytes+1] = (cr >> 16) & 0xff;
+    res[read_bytes+2] = (cr >> 8)  & 0xff;
+    res[read_bytes+3] =  cr        & 0xff;
+    read_bytes += 4;
+  }
+
+  read_read_buf();
+
   return true;
+}
+
+void read_user_mem() {
+  Serial.println("Read user mem");
+  uint8_t fuse_bytes[512];
+  memset(fuse_bytes, 0, 512);
+  if (!read_block(USER_ROW_ADDR, fuse_bytes, 512)) {
+    return;
+  }
+  Serial.println("Contents:");
+  for (int i = 0; i < 512; i ++) {
+    if (i%4 == 0) {
+      Serial.print(" 0x");
+    }
+    Serial.print(fuse_bytes[i], HEX);
+    if (i%8 == 7) {
+      Serial.println();
+    }
+  }
 }
 
 void setup() {
@@ -352,6 +373,8 @@ void setup() {
     Serial.println("Locked - fail");
     while(1);
   }
+
+  read_user_mem();
 }
 
 void loop() {
