@@ -1,4 +1,31 @@
-
+/*
+ * Copyright (c) 2020 Dimitar Kunchev
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+ 
 #include "line_write.h"
 #include "reg_definitions.h"
 
@@ -184,6 +211,50 @@ uint32_t read_did() {
   }
 }
 
+uint32_t read_dsu_ctrl_status() {
+  Serial.print("Read DSU CTRL Status: ");
+  uint32_t res = 0;
+  read_word(DAP_DSU_CTRL_STATUS, &res);
+  Serial.println(res, HEX);
+  res = read_read_buf();
+  Serial.print("DSU Ctrl Status: 0x"); Serial.println(res, HEX);
+  return res;
+}
+
+//
+
+bool read_block(uint32_t addr, uint8_t * data, int size) {
+  int max_size = (32 - 5) & ~3;
+  int offs = 0;
+
+  while (size) {
+    int align, sz;
+    uint8_t buf[1024];
+
+    align = 0x400 - (addr - (addr & ~0x3ff));
+    sz = (size > max_size) ? max_size : size;
+    sz = (sz > align) ? align : sz;
+
+    if (!write_reg(SWD_AP_REG_TAR, true, addr)) {
+      return false;
+    }
+
+//    buf[0] = ID_DAP_TRANSFER_BLOCK;
+//    buf[1] = 0x00; // DAP index
+//    buf[2] = (sz / 4) & 0xff;
+//    buf[3] = ((sz / 4) >> 8) & 0xff;
+//    buf[4] = SWD_AP_DRW | DAP_TRANSFER_RnW | DAP_TRANSFER_APnDP;
+//    dbg_dap_cmd(buf, sizeof(buf), 5);
+
+    memcpy(&data[offs], &buf[3], sz);
+
+    size -= sz;
+    addr += sz;
+    offs += sz;
+  }
+  return true;
+}
+
 void setup() {
   Serial.begin(115200);
   while(!Serial) {
@@ -276,7 +347,11 @@ void setup() {
     }
   }
 
-  
+  if (read_dsu_ctrl_status() & 0x00010000) {
+    // Note that the result is flipped. 0x8120000 is what I usually get. First byte of that 0x03 offset, second is 0x02, etc. So that value means DBGPRES and HPE are set (and something in the reserved space)
+    Serial.println("Locked - fail");
+    while(1);
+  }
 }
 
 void loop() {
