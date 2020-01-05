@@ -25,48 +25,59 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
- 
+
 #include <Arduino.h>
-#ifndef __LINE_WRITE__
-#define __LINE_WRITE__
+#include "reg_definitions.h"
+
+#ifndef __DAP__
+#define __DAP__
 
 /*
- * The following functions directly control the IO. They wrap to some very basic-level 
- * functions such as sending and receiving bits on the line.
- * The only more complicated functions are the line reset and the pin registers preparation
+ * The following functions provide access over SWD to the DAP DP registers. There are
+ * functions to directly read/write registers and some are wrapped in easier-to-use
+ * way
  * 
- * Note that this code is "decoupled" from the standard Arduino functions 
+ * Note that these are used to further access the APs in the target, but this file only 
+ * aims to provide the base DP registers access (to keep things neat and tidy)
  */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Perform a line reset and the JTAG-SWD switching sequence
-void swd_line_rst_switch_to_swd();
+// Initialise DAP, reset target, enter SWD mode, etc
+bool dap_begin(int swdio_pin, int swclk_pin, int nrst_pin);
 
-// Send up to 32 bits over the line
-void swd_write_line(uint32_t val, uint8_t bit_length);
+/// Raw register access functions
 
-// Turn around from writing to reading
-void swd_turn_around_to_input();
+// Read a register
+bool dap_read_reg(uint8_t addr, bool is_ap_reg, uint32_t * res);
+// write a register
+bool dap_write_reg(uint8_t addr, bool is_ap_reg, uint32_t val);
 
-// Turn around from reading to writing
-void swd_turn_around_to_output();
 
-// Read 3-bit ACK response. 1 is OK, 2 is WAIT, 4 is ERROR
-uint8_t swd_read_ack();
+/// DP Registers access functions
 
-// Read up to 32 bits from the line
-uint32_t swd_read_line(uint8_t bits);
+// Read target IDCODE
+bool dap_read_id_code(uint32_t * id_code);
 
-//void set_clock_delay_us(int us);
+// Read CTRL/STAT DP Register
+uint32_t dap_read_ctrl_stat();
 
-// Setup the pins to use for the SWD and reset the target. IMPORTANT: swdio and swclk must be in the same port group (PA, PB, etc) - this lets us use the TGL register to match the rising/falling edges
-void swd_prepare_pin_registers_and_reset_target (int swdio_pin, int swclk_pin, int nrst_pin);
+// Read RDBUFF DP Register
+uint32_t dap_read_read_buf();
 
-#endif // __LINE_WRITE__
+// Write CTRL/STAT DP Register
+bool dap_write_ctrl_stat(uint32_t val);
+
+// Write ABORT DP Register
+bool dap_write_abort(uint32_t val);
+
+// Write the SELECT DP Register
+bool dap_write_select(uint32_t val);
 
 #ifdef __cplusplus
-}
-#endif
+};
+#endif 
+
+#endif // __DAP__

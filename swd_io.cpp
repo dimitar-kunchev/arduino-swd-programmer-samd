@@ -26,7 +26,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
  
-#include "line_write.h"
+#include "swd_io.h"
 #include <assert.h>
 
 int cfg_swclk_pin, cfg_swdio_pin, cfg_swrst_pin;
@@ -221,6 +221,29 @@ void swd_turn_around_to_output() {
 uint8_t swd_read_ack() {
   return swd_read_line(3);
 }
+
+uint32_t swd_calc_parity(uint32_t value) {
+  value ^= value >> 16;
+  value ^= value >> 8;
+  value ^= value >> 4;
+  value &= 0x0f;
+  return (0x6996 >> value) & 1;
+}
+
+uint32_t swd_build_request(uint8_t addr, bool is_ap_reg, bool is_read) {
+  uint8_t request = 0; ;
+  if (is_ap_reg) {
+    request |= 1 << 1;            // set APnDP bit
+  }
+  if (is_read) {
+    request |= 1 << 2;            // set RnW bit
+  }
+  request |= (addr & 0x0C) << 1;  // set ADDR[2:3] bits
+  request |= swd_calc_parity(request) << 5; //set parity
+  request |= (1 << 7) | (1);      // set start & stop bits
+  return request;
+}
+
 //void set_clock_delay_us(int us) {
   //clk_delay_time = us;
 //}

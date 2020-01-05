@@ -1,0 +1,89 @@
+/*
+ * Copyright (c) 2020 Dimitar Kunchev
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+ /**
+  * Here are some wrapping functions to send requests to a MEM AP of the target.
+  * They implement ARM Debug Interface version 5 (ADIv5) and are tested
+  * against Cortex M4
+  * 
+  * These are intended only to simplify further development and reducing risk of
+  * errors when accessing registers.
+  */
+
+#include <Arduino.h>
+#include "dap.h"
+#include "reg_definitions.h"
+
+#ifndef __DAP_MEM_AP__
+#define __DAP_MEM_AP__
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+inline bool dap_write_csw(uint32_t val) {
+  // Serial.print("Write AP CSW 0x"); Serial.println(val, HEX);
+  return dap_write_reg(SWD_AP_REG_CSW, true, val);
+}
+inline uint32_t dap_read_csw() {
+  uint32_t val;
+  if (dap_read_reg(SWD_AP_REG_CSW, true, &val)) {
+    val = dap_read_read_buf();
+  }
+  Serial.print("Read CSW: 0x"); Serial.println(val, HEX);
+  return val;
+}
+
+inline bool dap_read_drw(uint32_t * res) {
+   return dap_read_reg(SWD_AP_REG_DRW, true, res);
+}
+
+inline bool dap_write_drw(uint32_t val) {
+   return dap_write_reg(SWD_AP_REG_DRW, true, val);
+}
+
+inline bool dap_write_tar(uint32_t address) {
+  return dap_write_reg(SWD_AP_REG_TAR, true, address);
+}
+
+//
+
+inline bool dap_read_word(uint32_t addr, uint32_t * res) {
+  return (dap_write_tar(addr) && dap_read_drw(res));
+}
+
+inline bool dap_write_word(uint32_t addr, uint32_t data) {
+  return dap_write_tar(addr) && dap_write_drw(data);
+}
+
+
+#ifdef __cplusplus
+};
+#endif 
+
+#endif //  __DAP_MEM_AP__
