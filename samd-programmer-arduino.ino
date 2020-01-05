@@ -26,8 +26,9 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
  
-#include "dap.h"
-#include "dap_mem_ap.h"
+//#include "dap.h"
+//#include "dap_mem_ap.h"
+#include "samd51_dap.h"
 
 #define SWDIO 9
 #define SWCLK 8
@@ -35,122 +36,6 @@
 
 ///
 
-void stop_core() {
-  Serial.println("Stop core");
-  
-  dap_write_word(DHCSR, 0xa05f0003);
-  dap_read_read_buf();
-  dap_write_word(DEMCR, 0x00100501); // ICE writes 1000001 to DEMCR?
-  dap_read_read_buf();
-  dap_write_word(AIRCR, 0x05fa0004);
-  
-  Serial.println("Core stopped\r\n");
-}
-
-uint32_t read_did() {
-  Serial.print("Read DSU DID: ");
-  uint32_t tmp;
-  if (dap_read_word(DAP_DSU_DID, &tmp)) {
-    uint32_t did = dap_read_read_buf();
-    Serial.println(did, HEX);
-    return did;
-  } else {
-    return 0;
-  }
-}
-
-// read the DSU ctrl/statusA/statusB register. The returned uint32 has as its right-most octet the CTRL bits
-uint32_t read_dsu_ctrl_status() {
-  Serial.print("Read DSU CTRL Status: ");
-  uint32_t res = 0;
-  dap_read_word(DAP_DSU_CTRL_STATUS, &res);
-  Serial.println(res, HEX);
-  res = dap_read_read_buf();
-  Serial.print("DSU Ctrl Status: 0x"); Serial.println(res, HEX);
-  return res;
-}
-
-/// Block Operations
-
-// IMPORTANT: Use sizes, multiples of 4
-bool read_block(uint32_t address, uint8_t * res, int size) {
-  dap_write_csw(SWD_REG_MEM_AP_CSW_Prot(35) | SWD_REG_MEM_AP_CSW_AddrInc_Single | SWD_REG_MEM_AP_CSW_Size_Word);
-
-  if (!dap_write_tar(address)) {
-    return false;
-  }
-  
-  int read_bytes = 0;
-  uint32_t cr;
-
-  // I don't understand why but we need to do one read first that contains some old information. After that it all goes well. I think
-  dap_read_drw(&cr);
-  
-  while (read_bytes < size) {
-    dap_read_drw(&cr);
-
-    memcpy(&(res[read_bytes]), &cr, 4);
-    read_bytes += 4;
-  }
-
-  dap_read_read_buf();
-
-  return true;
-}
-
-void read_user_mem() {
-  Serial.println("Read user mem");
-  uint8_t user_bytes[512];
-  memset(user_bytes, 0, 512);
-  if (!read_block(USER_ROW_ADDR, user_bytes, 512)) {
-    return;
-  }
-  Serial.println("Contents:");
-  for (int i = 0; i < 512; i ++) {
-    if (i%4 == 0) {
-      Serial.print(" 0x");
-    }
-    Serial.print(user_bytes[i], HEX);
-    if (i%8 == 7) {
-      Serial.println();
-    }
-  }
-}
-
-void read_fuses() {
-  Serial.println("Read fuses");
-  uint8_t fuse_bytes[32];
-  memset(fuse_bytes, 0, 32);
-  if (!read_block(USER_ROW_ADDR, fuse_bytes, 32)) {
-    return;
-  }
-  Serial.println("Fuses contents:");
-  for (int i = 0; i < 32; i ++) {
-    if (i%4 == 0) {
-      Serial.print(" 0x");
-    }
-    Serial.print(fuse_bytes[i], HEX);
-  }
-  Serial.println();
-}
-
-void chip_erase() {
-  uint32_t ctrl_status = read_dsu_ctrl_status();
-  Serial.println("Erasing chip...");
-  dap_write_word(DAP_DSU_CTRL_STATUS, 0x00001f00); // Clear flags
-  dap_write_word(DAP_DSU_CTRL_STATUS, 0x00000010); // Chip erase
-  delay(100);
-  int retries = 600;
-  while (retries > 0) {
-    ctrl_status = read_dsu_ctrl_status();
-    if ((ctrl_status & 0x00000100) != 0) { // check the DONE flag
-      break;
-    }
-    retries --;
-    delay(100);
-  };
-  Serial.println("Done, chip erased");
-}
 
 void setup() {
   Serial.begin(115200);
@@ -171,10 +56,12 @@ void setup() {
 //
 //  // let's get busy
 //  read_id_code();
-
-  if (!dap_begin(SWDIO, SWCLK, SWRST)) {
+  uint32_t target_id_code = dap_begin_and_identify(SWDIO, SWCLK, SWRST);
+  if (target_id_code != DAP_ID_CORTEX_M4) {
     Serial.println("DAP startup error");
     while (1);
+  } else {
+    Serial.println("Cortex M4 DAP connected");
   }
   
   uint32_t ctrl_stat = dap_read_ctrl_stat();
@@ -184,18 +71,9 @@ void setup() {
   dap_read_read_buf();  // should return 0
 
   Serial.println("Power-up the system and debug domains");
-
-  // power-up and debug power-up request
-  dap_write_ctrl_stat(SWD_REG_CTRL_STAT_CSYSPWRUPREQ | SWD_REG_CTRL_STAT_CDBGPWRUPREQ);
-  dap_read_read_buf();  // should return 0
-  ctrl_stat = dap_read_ctrl_stat();
-  for (int i = 0; i < 100; i ++){
-    if ((ctrl_stat & SWD_REG_CTRL_STAT_CSYSPWRUPACK) && (ctrl_stat & SWD_REG_CTRL_STAT_CDBGPWRUPACK)) {
-      Serial.println("Power-up requests complete");
-      break;
-    } else {
-      delay(1);
-    }
+  if (!samd_power_up_debug_domains()) {
+    Serial.println("Failed to power up the system and debug domains");
+    while (1);
   }
 
   // check if there are any stick errors set and clear them if needed
@@ -204,11 +82,11 @@ void setup() {
     dap_write_abort(SWD_REG_ABORT_Clear_All);
   }
   
+  /*
   // Debug start request
   // Technically what we should do is: write bit 26 (CDBGRSTREQ) of the CTRL/STAT, wait until bit 27 (CDBGRSTACK) is set and then clear bit 26. 
   // However it seems the Atmel ICE gives up after few ms
   // It would appear this is NOT actually implemented in the CPU.
-  /*
   Serial.println("Attempt debugger core reset\r\n");
   for (int i = 0; i < 20; i ++){
     dap_write_ctrl_stat(SWD_REG_CTRL_STAT_CSYSPWRUPREQ | SWD_REG_CTRL_STAT_CDBGPWRUPREQ | SWD_REG_CTRL_STAT_CDBGRSTREQ);
@@ -234,11 +112,15 @@ void setup() {
   dap_write_csw(SWD_REG_MEM_AP_CSW_Prot(35) | SWD_REG_MEM_AP_CSW_AddrInc_Single | SWD_REG_MEM_AP_CSW_Size_Word);
   dap_read_read_buf();
 
-  stop_core();
-
-  // Read device ID. Takes few attempts sometimes and raises sticy error. Don't know why
+  samd_stop_core();
+  Serial.println("Core stopped");
+  
+  // Read device ID. Takes few attempts sometimes and raises sticky error. Don't know why
+  uint32_t device_id = 0;
   for (int i = 0; i < 10; i ++) {
-    if (read_did() == 0) { // should be 0x60060004 for SAMD51J20A
+    device_id = samd_read_dsu_did();
+    if (device_id == 0) { // should be 0x60060004 for SAMD51J20A
+      Serial.println("DID read failed, retry");
       ctrl_stat = dap_read_ctrl_stat();
       if (ctrl_stat & SWD_REG_CTRL_STAT_STICKYERR) {
         dap_write_abort(SWD_REG_ABORT_Clear_All);
@@ -248,25 +130,69 @@ void setup() {
       break;
     }
   }
+  if (device_id == 0) {
+    Serial.println("DID read failed, giving up");
+    while (1);
+  }
+  Serial.print("DSU Device ID: 0x"); Serial.println(device_id);
 
   // Check if DeviceEn bit is set 
-  if (! (dap_read_csw() & SWD_REG_MEM_AP_CSW_DeviceEn)) {
+  uint32_t dap_csw = dap_read_csw();
+  Serial.print("CSW: 0x"); Serial.println(dap_csw);
+  if (! (dap_csw & SWD_REG_MEM_AP_CSW_DeviceEn)) {
     Serial.println("CSW.DeviceEn bit not set - error");
     while(1);
   }
 
   // Check if device security bit is set
-  if (read_dsu_ctrl_status() & 0x00010000) {
-    // Note that the result is flipped. 0x8120000 is what I usually get. First byte of that 0x03 offset, second is 0x02, etc. So that value means DBGPRES and HPE are set (and something in the reserved space)
+  uint8_t dsu_status_b = samd_read_dsu_status_b();
+  if (dsu_status_b & 0x01) {
     Serial.println("Security bit is set");
     while(1);
   }
+  if (dsu_status_b & (0x01 << 1)) {
+    Serial.println("DSU reports debugger connected - OK");
+  }
+  
+  /*
+  uint32_t dsu_ctrl_status = samd_read_dsu_ctrl_status();
+  Serial.print("DSU Ctrl Status: 0x"); Serial.println(dsu_ctrl_status, HEX);
+  if (dsu_ctrl_status & 0x00010000) {
+    // Note that the result is LSB first. 0x8120000 is what I usually get. First byte (MSB) of that is 0x03 offset in the register (STATUSB), second is 0x02, etc. So that value means DBGPRES and HPE are set (and something in the reserved space)
+  }*/
 
-  //read_user_mem();
-  read_fuses();
+  //samd_read_user_mem(user_mem);
+
+  /*
+  Serial.println("Read fuses");
+  uint8_t fuse_bytes[32];
+  samd_read_fuses(fuse_bytes);
+  Serial.println("Fuses contents:");
+  for (int i = 0; i < 32; i ++) {
+    if (i%4 == 0) {
+      Serial.print(" 0x");
+    }
+    Serial.print(fuse_bytes[i], HEX);
+  }
+  Serial.println();*/
 
   // erase chip
-  chip_erase();
+  //Serial.println("Erasing chip...");
+  //samd_chip_erase();
+  //Serial.println("Done, chip erased");
+
+  uint8_t serial_number[16];
+  if (samd_read_serial_number(serial_number)) {
+    Serial.print("S/N: ");
+    for (uint8_t i = 0; i < 16; i ++) {
+      Serial.print(serial_number[i], HEX);
+    }
+    Serial.println();
+  } else {
+    Serial.println("Error reading serial number");
+  }
+
+  //samd_perform_mbist(0x20000000, 256*1024);
 }
 
 void loop() {

@@ -46,41 +46,53 @@
 extern "C" {
 #endif
 
+// Write the CSW AP register
 inline bool dap_write_csw(uint32_t val) {
   // Serial.print("Write AP CSW 0x"); Serial.println(val, HEX);
   return dap_write_reg(SWD_AP_REG_CSW, true, val);
 }
+
+// Read the CSW AP register
 inline uint32_t dap_read_csw() {
   uint32_t val;
   if (dap_read_reg(SWD_AP_REG_CSW, true, &val)) {
     val = dap_read_read_buf();
   }
-  Serial.print("Read CSW: 0x"); Serial.println(val, HEX);
+  // Serial.print("Read CSW: 0x"); Serial.println(val, HEX);
   return val;
 }
 
+// Read the DRW AP register
 inline bool dap_read_drw(uint32_t * res) {
    return dap_read_reg(SWD_AP_REG_DRW, true, res);
 }
 
+// Write the DRW AP register
 inline bool dap_write_drw(uint32_t val) {
    return dap_write_reg(SWD_AP_REG_DRW, true, val);
 }
 
+// Write the TAR AP register
 inline bool dap_write_tar(uint32_t address) {
   return dap_write_reg(SWD_AP_REG_TAR, true, address);
 }
 
-//
+////
 
+// Read a memory word: write an address to TAR and read the contents of that address via DRW
 inline bool dap_read_word(uint32_t addr, uint32_t * res) {
   return (dap_write_tar(addr) && dap_read_drw(res));
 }
 
+// Write a memory word: write the address to TAR and the contents to DRW
 inline bool dap_write_word(uint32_t addr, uint32_t data) {
   return dap_write_tar(addr) && dap_write_drw(data);
 }
 
+///
+
+// Read a block from memory. Use sizes, multiples of 4 (as we read it in 32 bit words)
+bool dap_read_mem_block(uint32_t address, uint8_t * res, int size);
 
 #ifdef __cplusplus
 };

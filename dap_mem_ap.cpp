@@ -27,3 +27,28 @@
  */
 
 #include "dap_mem_ap.h"
+
+bool dap_read_mem_block(uint32_t address, uint8_t * res, int size) {
+  dap_write_csw(SWD_REG_MEM_AP_CSW_Prot(35) | SWD_REG_MEM_AP_CSW_AddrInc_Single | SWD_REG_MEM_AP_CSW_Size_Word);
+
+  if (!dap_write_tar(address)) {
+    return false;
+  }
+  
+  int read_bytes = 0;
+  uint32_t cr;
+
+  // I don't understand why but we need to do one read first that contains some old information. After that it all goes well. I think
+  dap_read_drw(&cr);
+  
+  while (read_bytes < size) {
+    dap_read_drw(&cr);
+
+    memcpy(&(res[read_bytes]), &cr, 4);
+    read_bytes += 4;
+  }
+
+  dap_read_read_buf();
+
+  return true;
+}

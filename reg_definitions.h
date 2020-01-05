@@ -203,7 +203,7 @@ typedef union {
 #define DAP_DSU_BASE        0x41002100
 #define DAP_DSU_CTRL_STATUS (DAP_DSU_BASE + 0)
 #define DAP_DSU_ADDR        (DAP_DSU_BASE + 0x04)
-#define DAP_DSU_LENGTH      (DAP_DSU_BASE + 0x08);
+#define DAP_DSU_LENGTH      (DAP_DSU_BASE + 0x08)
 #define DAP_DSU_DATA        (DAP_DSU_BASE + 0x0C)
 
 #define DAP_DSU_DID         (DAP_DSU_BASE + 0x18)

@@ -29,14 +29,13 @@
  #include "dap.h"
  #include "swd_io.h"
 
-bool dap_begin(int swdio_pin, int swclk_pin, int nrst_pin) {
+uint32_t dap_begin_and_identify(int swdio_pin, int swclk_pin, int nrst_pin) {
   swd_prepare_pin_registers_and_reset_target(swdio_pin, swclk_pin, nrst_pin);
   swd_line_rst_switch_to_swd();
   delay(1); // give some time the target to wake up. not really needed...
-  uint32_t id_code;
-  if (dap_read_id_code(&id_code)) {
-    Serial.println("DAP Connected");
-  }
+  uint32_t id_code = 0;
+  dap_read_id_code(&id_code);
+  return id_code;
 }
 
 bool dap_read_reg(uint8_t addr, bool is_ap_reg, uint32_t * res) {
@@ -53,9 +52,9 @@ retry_read_reg:
     swd_turn_around_to_output();
     
     if (ack == SWD_ACK_WAIT) {
-      delayMicroseconds(10);
+      //delayMicroseconds(10);
       if (attempts_to_read_reg < 10) {
-        Serial.print("wait... ");
+        // Serial.print(". ");
         attempts_to_read_reg ++;
         goto retry_read_reg;
       }
@@ -78,6 +77,9 @@ retry_read_reg:
   // Serial.println("ACK OK");
   if (parity_bit != swd_calc_parity(*res)) {
     Serial.println("Parity mismatch");
+    attempts_to_read_reg ++;
+    goto retry_read_reg;
+    return false;
   }
   // Serial.println(*res, HEX);
   return true;
@@ -94,9 +96,9 @@ retry_write_reg:
   uint8_t ack = swd_read_ack(); // read the ACK
   if (ack != SWD_ACK_OK) {
     if (ack == SWD_ACK_WAIT) {
-      delayMicroseconds(10);
+      // delayMicroseconds(10);
       if (attempts_to_write_reg < 10) {
-        Serial.print("wait... ");
+        // Serial.print(". ");
         attempts_to_write_reg ++;
         goto retry_write_reg;
       }
@@ -125,44 +127,39 @@ retry_write_reg:
 /// 
 
 bool dap_read_id_code(uint32_t * id_code) {
-  Serial.print("Read ID Code: ");
-  bool ret = dap_read_reg(SWD_DP_REG_IDCODE, false, id_code);
-  Serial.println(*id_code, HEX);
+  return dap_read_reg(SWD_DP_REG_IDCODE, false, id_code);
 }
 
 uint32_t dap_read_ctrl_stat() {
-  Serial.print("Read CTRL/STAT: ");
+  // Serial.print("Read CTRL/STAT: ");
   uint32_t ctrl_stat = 0;
   dap_read_reg(SWD_DP_REG_CTRL_STAT, false, &ctrl_stat);
-  Serial.println(ctrl_stat, HEX);
+  // Serial.println(ctrl_stat, HEX);
   return ctrl_stat;
 }
 
 uint32_t dap_read_read_buf() {
-  Serial.print("Read READ BUF: ");
+  // Serial.print("Read READ BUF: ");
   uint32_t read_buf = 0;
-  if (!dap_read_reg(SWD_DP_REG_RDBUFF, false, &read_buf)) {
-    Serial.println(dap_read_ctrl_stat());
-    while(1);
-  }
-  Serial.print("0x"); Serial.println(read_buf, HEX);
+  dap_read_reg(SWD_DP_REG_RDBUFF, false, &read_buf);
+  // Serial.print("0x"); Serial.println(read_buf, HEX);
   return read_buf;
 }
 
 bool dap_write_ctrl_stat(uint32_t val) {
-  Serial.print("Write CTRL STAT 0x");
-  Serial.println(val, HEX);
+  // Serial.print("Write CTRL STAT 0x");
+  // Serial.println(val, HEX);
   return dap_write_reg(SWD_DP_REG_CTRL_STAT, false, val);
 }
 
 bool dap_write_abort(uint32_t val) {
-  Serial.print("Write ABORT 0x");
-  Serial.println(val, HEX);
+  // Serial.print("Write ABORT 0x");
+  // Serial.println(val, HEX);
   return dap_write_reg(SWD_DP_REG_ABORT, false, val);
 }
 
 bool dap_write_select(uint32_t val) {
-  Serial.print("Write SELECT 0x");
-  Serial.println(val, HEX);
+  // Serial.print("Write SELECT 0x");
+  // Serial.println(val, HEX);
   return dap_write_reg(SWD_DP_REG_SELECT, false, val);
 }

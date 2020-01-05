@@ -45,8 +45,12 @@
 extern "C" {
 #endif
 
+#define DAP_ID_CORTEX_M4      0x2BA01477
+#define DAP_ID_CORTEX_M3      0x2BA01477
+#define DAP_ID_CORTEX_M0PLUS  0x0BC11477
+
 // Initialise DAP, reset target, enter SWD mode, etc
-bool dap_begin(int swdio_pin, int swclk_pin, int nrst_pin);
+uint32_t dap_begin_and_identify(int swdio_pin, int swclk_pin, int nrst_pin);
 
 /// Raw register access functions
 
