@@ -36,6 +36,7 @@
 extern "C" {
 #endif
 
+#define SAMD_PAGE_SIZE  512
 
  /**
   * Functions to halt, erase and program a SAMD51 controller. Should work for SAME51 too really
@@ -95,8 +96,9 @@ inline bool samd_read_flash_memory(uint32_t offset_address, uint8_t * buf, uint3
 }
 
 bool samd_prepare_for_programming();
+bool samd_write_flash_page(uint32_t address, const uint8_t * buf, uint32_t length); // Write up to a page (SAMD_PAGE_SIZE) in flash memory. Actually any address is accepted, just make sure you use it with a flash address.
 bool samd_write_flash(uint32_t offset_address, const uint8_t * buf, uint32_t length);
-bool samd_end_programming();
+bool samd_end_programming(uint32_t * computed_crc, uint32_t start_memory_address, uint32_t total_memory_size);  // end programming and calculate CRC32 of the size of memory you need (usually the size of the upload)
 
 // helper function
 

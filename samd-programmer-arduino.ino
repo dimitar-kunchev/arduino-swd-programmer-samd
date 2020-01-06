@@ -29,7 +29,7 @@
 //#include "dap.h"
 //#include "dap_mem_ap.h"
 #include "samd51_dap.h"
-//#include "test_fw.h"
+#include "test_fw.h"
 
 #define SWDIO 9
 #define SWCLK 8
@@ -157,12 +157,16 @@ void test_write_firmware() {
   samd_prepare_for_programming();
   //
   // REPLACE THIS WITH ACTUAL FIRMWARE!
-  const int fw_contents_len = 128;
-  uint8_t fw_contents[fw_contents_len];
-  memset(fw_contents, 0, fw_contents_len);
+  // const int fw_contents_len = 128;
+  // uint8_t fw_contents[fw_contents_len];
+  // memset(fw_contents, 0, fw_contents_len);
   //
   samd_write_flash(0, fw_contents, fw_contents_len);
-  samd_end_programming();
+  Serial.println("Done. Verifying");
+  uint32_t crc;
+  samd_end_programming(&crc, 0, fw_contents_len);
+  Serial.print("CRC is 0x");Serial.println(crc, HEX);
+  Serial.print("CRC xor 0xFFFFFFFF is 0x");Serial.println(crc^0xFFFFFFFF, HEX);
 }
 
 void setup() {
@@ -292,7 +296,7 @@ void setup() {
   //test_read_firmware();
   test_chip_erase();
   test_write_firmware();
-  test_read_firmware();
+  // test_read_firmware();
 }
 
 void loop() {

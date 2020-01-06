@@ -65,41 +65,33 @@ uint32_t samd_write_dsu_ctrl_status(uint32_t val) {
   return dap_write_word(DAP_DSU_CTRL_STATUS, val);
 }
 
+bool samd_wait_dsu_status_done(int ms) {
+  uint32_t ctrl_status = samd_read_dsu_ctrl_status();
+  while (! (ctrl_status& (1 << 8) && ms > 0)) {
+    delay(1);
+    ctrl_status = samd_read_dsu_ctrl_status();
+    ms --;
+  }
+  return ms > 0;
+}
+
 bool samd_perform_mbist(uint32_t mem_start_address, uint32_t mem_length) {
   // write address start to DSU ADDR
   dap_write_word(DAP_DSU_ADDR, mem_start_address << 2); // AMOD=0: exit on error
   // write memory length to DSU LENGTH
-  dap_write_word(DAP_DSU_LENGTH, mem_length<<2);
+  dap_write_word(DAP_DSU_LENGTH, mem_length);  // length register is in words!
   // write 1 to DSU MBIST
   uint32_t ctrl_status = samd_read_dsu_ctrl_status();
   ctrl_status |= 1 << 3;
   //Serial.print("Set DSU CTRL/STATUS: 0x"); Serial.println(ctrl_status, HEX);
   samd_write_dsu_ctrl_status(ctrl_status);
 
-  while (true) {
-    //delay(1);
+  if (samd_wait_dsu_status_done(10000)) {
     ctrl_status = samd_read_dsu_ctrl_status();
-    //Serial.print("CST: 0x"); Serial.println(ctrl_status, HEX);
-    if (ctrl_status & (1 << 8)) { // check the DONE bit
-      //Serial.println("Done");
-      uint32_t tmp;
-      dap_read_word(DAP_DSU_ADDR, &tmp);
-      //Serial.print("ADDR reg contents: 0x"); Serial.println(tmp, HEX);
-      dap_read_word(DAP_DSU_DATA, &tmp);
-      tmp = dap_read_read_buf();
-      //Serial.print("DATA reg contents: 0x"); Serial.println(tmp, HEX);
-      if (ctrl_status & ( 1 << 11)) {
-        //Serial.println("MBIST detected errors");
-        return false;
-      } else {
-        //Serial.println("MBIST found no problems");
-//        if (ctrl_status & (1 << 10)) {
-//          Serial.println("However there is DSU.BERR (bus error) flag raised");
-//        }
-        return true;
-      }
-    }
-  } 
+    return ctrl_status & ( 1 << 11); // ERROR bit
+  } else {
+    return false; // timeout
+  }
 }
 /*
  * NVMCTRL FUNCTIONS
@@ -107,8 +99,8 @@ bool samd_perform_mbist(uint32_t mem_start_address, uint32_t mem_length) {
 
 bool samd_read_user_mem(uint8_t * user_bytes) {
   //Serial.println("Read user mem");
-  //memset(user_bytes, 0, 512);
-  return dap_read_mem_block(USER_ROW_ADDR, user_bytes, 512);
+  //memset(user_bytes, 0, SAMD_PAGE_SIZE);
+  return dap_read_mem_block(USER_ROW_ADDR, user_bytes, SAMD_PAGE_SIZE);
 }
 
 bool samd_read_fuses(uint8_t * fuse_bytes) {
@@ -297,8 +289,8 @@ bool samd_prepare_for_programming() {
   samd_nvmctrl_wait_status_ready(100);
 }
 
-static bool samd_write_flash_row(uint32_t address, const uint8_t * buf, uint32_t length) {
-  Serial.print("Begin writing at 0x");  Serial.println(address, HEX);
+bool samd_write_flash_page(uint32_t address, const uint8_t * buf, uint32_t length) {
+  // Serial.print("Begin writing at 0x");  Serial.println(address, HEX);
   uint32_t tmp;
   for (int i = 0; i < length; i += 4) {
     memcpy(&tmp, &(buf[i]), 4);
@@ -314,28 +306,26 @@ static bool samd_write_flash_row(uint32_t address, const uint8_t * buf, uint32_t
 }
 
 bool samd_write_flash(uint32_t offset_address, const uint8_t * buf, uint32_t length) {
-//  uint32_t tmp;
-//  uint32_t target_address = FLASH_START_ADDR + offset_address;
-//
-//  dap_write_word(DAP_NVMCTRL_ADDR, target_address);
-//  for (int i = 0; i < length; i += 4) {
-//    memcpy(&tmp, &(buf[i]), 4);
-//    if (!dap_write_word(target_address, tmp)) {
-//      delay(100);
-//      dap_write_word(target_address, tmp);
-//    }
-//    target_address += 4;
-//  }
-//  samd_nvmctrl_wait_status_ready(100);
-//  samd_nvmctrl_wait_intflag_done(100);
-
-  for (int i = 0; i < length; i += 512) {
-    if (!samd_write_flash_row(FLASH_START_ADDR + offset_address + i, &(buf[i]), min(512, length-i))) {
+  for (int i = 0; i < length; i += SAMD_PAGE_SIZE) {
+    if (!samd_write_flash_page(FLASH_START_ADDR + offset_address + i, &(buf[i]), min(SAMD_PAGE_SIZE, length-i))) {
       return false;
     }
   }
   return true;
 }
-bool samd_end_programming() {
-  
+bool samd_end_programming(uint32_t * computed_crc, uint32_t start_memory_address, uint32_t total_memory_size) {
+  dap_write_word(DAP_DSU_DATA, 0xFFFFFFFF);
+  dap_write_word(DAP_DSU_ADDR, start_memory_address << 2);  // AMOD: 0 for array access
+  dap_write_word(DAP_DSU_LENGTH, total_memory_size);  // length register is in words!
+  dap_write_word(DAP_DSU_CTRL_STATUS, 0x00001f00);       // Clear flags
+  dap_write_word(DAP_DSU_CTRL_STATUS, 1 << 2); // start CRC
+  if (!samd_wait_dsu_status_done(10000)) {
+    return false;
+  }
+  uint32_t ctrl_status = samd_read_dsu_ctrl_status();
+  if (ctrl_status & (1 << 10)) {
+    Serial.println("BUS Error");
+    return false;
+  }
+  return dap_read_word(DAP_DSU_DATA, computed_crc);
 }
