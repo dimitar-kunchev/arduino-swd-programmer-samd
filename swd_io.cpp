@@ -294,3 +294,22 @@ void swd_prepare_pin_registers_and_reset_target (int swdio_pin, int swclk_pin, i
   PORT->Group[g_APinDescription[cfg_swrst_pin].ulPort].OUTSET.reg = 1 << g_APinDescription[cfg_swrst_pin].ulPin;
   delay(125);
 }
+
+void swd_end(bool reset_target) {
+  if (reset_target) {
+    // enter reset
+    PORT->Group[g_APinDescription[cfg_swrst_pin].ulPort].OUTCLR.reg = 1 << g_APinDescription[cfg_swrst_pin].ulPin;
+    delay(125);
+  }
+  
+  // switch data and clock pins to inputs
+  DAT_SET_INPUT();
+  *reg_clk_pincfg = PORT_PINCFG_INEN|PORT_PINCFG_PULLEN; *reg_clk_dirclr=reg_clk_mask; *reg_clk_set=reg_clk_mask;
+
+  // release the reset (if it was set low)
+  PORT->Group[g_APinDescription[cfg_swrst_pin].ulPort].OUTSET.reg = 1 << g_APinDescription[cfg_swrst_pin].ulPin;
+
+  // switch the reset pin to input
+  PORT->Group[g_APinDescription[cfg_swrst_pin].ulPort].PINCFG[g_APinDescription[cfg_swrst_pin].ulPin].reg = PORT_PINCFG_INEN;
+  PORT->Group[g_APinDescription[cfg_swrst_pin].ulPort].DIRCLR.reg = 1 << g_APinDescription[cfg_swrst_pin].ulPin;
+}

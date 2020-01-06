@@ -329,3 +329,8 @@ bool samd_end_programming(uint32_t * computed_crc, uint32_t start_memory_address
   }
   return dap_read_word(DAP_DSU_DATA, computed_crc);
 }
+
+void samd_start_core() {
+  dap_write_word(DEMCR, 0x00000000);
+  dap_write_word(AIRCR, 0x05fa0004);
+}

@@ -169,6 +169,12 @@ void test_write_firmware() {
   Serial.print("CRC xor 0xFFFFFFFF is 0x");Serial.println(crc^0xFFFFFFFF, HEX);
 }
 
+void finish() {
+  samd_start_core();
+  dap_end(true);
+  Serial.println("All done!");
+}
+
 void setup() {
   Serial.begin(115200);
   while(!Serial) {
@@ -177,7 +183,7 @@ void setup() {
 /*
   uint32_t tmp = build_request(0x00, false, true);
   Serial.println(tmp, HEX); 
-  while (1);*/
+  goto end_all_done;*/
   
   // Prepare registers we will be using, allowing us to switch pins quickly, instead of using the slow Arduino functions
   // Reset the target, prep clk/data pins
@@ -191,7 +197,8 @@ void setup() {
   uint32_t target_id_code = dap_begin_and_identify(SWDIO, SWCLK, SWRST);
   if (target_id_code != DAP_ID_CORTEX_M4) {
     Serial.println("DAP startup error");
-    while (1);
+    finish();
+    return;
   } else {
     Serial.println("Cortex M4 DAP connected");
   }
@@ -205,7 +212,8 @@ void setup() {
   Serial.println("Power-up the system and debug domains");
   if (!samd_power_up_debug_domains()) {
     Serial.println("Failed to power up the system and debug domains");
-    while (1);
+    finish();
+    return;
   }
 
   // check if there are any stick errors set and clear them if needed
@@ -264,7 +272,8 @@ void setup() {
   }
   if (device_id == 0) {
     Serial.println("DID read failed, giving up");
-    while (1);
+    finish();
+    return;
   }
   Serial.print("DSU Device ID: 0x"); Serial.println(device_id);
 
@@ -273,14 +282,16 @@ void setup() {
   Serial.print("CSW: 0x"); Serial.println(dap_csw);
   if (! (dap_csw & SWD_REG_MEM_AP_CSW_DeviceEn)) {
     Serial.println("CSW.DeviceEn bit not set - error");
-    while(1);
+    finish();
+    return;
   }
 
   // Check if device security bit is set
   uint8_t dsu_status_b = samd_read_dsu_status_b();
   if (dsu_status_b & 0x01) {
     Serial.println("Security bit is set");
-    while(1);
+    finish();
+    return;
   }
   if (dsu_status_b & (0x01 << 1)) {
     Serial.println("DSU reports debugger connected - OK");
@@ -297,6 +308,8 @@ void setup() {
   test_chip_erase();
   test_write_firmware();
   // test_read_firmware();
+
+  finish();
 }
 
 void loop() {

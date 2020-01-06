@@ -74,6 +74,9 @@ uint32_t swd_calc_parity(uint32_t value);
 // Build a request header for sending over the wire. addr is the register address (lowest 2 bits are ignored!), is_ap_reg - whether request is for AP (or DP) register, is_read - whether it is read request
 uint32_t swd_build_request(uint8_t addr, bool is_ap_reg, bool is_read);
 
+// Release the pins (set them back to input, optionally reset the target
+void swd_end(bool reset_target);
+
 #endif // __SWD_IO__
 
 #ifdef __cplusplus

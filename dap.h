@@ -80,6 +80,9 @@ bool dap_write_abort(uint32_t val);
 // Write the SELECT DP Register
 bool dap_write_select(uint32_t val);
 
+// End and optionally reset the target
+void dap_end (bool reset_target);
+
 #ifdef __cplusplus
 };
 #endif 

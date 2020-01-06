@@ -163,3 +163,7 @@ bool dap_write_select(uint32_t val) {
   // Serial.println(val, HEX);
   return dap_write_reg(SWD_DP_REG_SELECT, false, val);
 }
+
+void dap_end (bool reset_target) {
+  swd_end(reset_target);
+}

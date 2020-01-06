@@ -107,6 +107,7 @@ inline uint32_t bswap32(uint32_t val) {
   return (val << 16) | (val >> 16);
 }
 
+void samd_start_core(); // used when you have finished tyour business
 
 #ifdef __cplusplus
 }
