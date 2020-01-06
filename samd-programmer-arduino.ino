@@ -29,6 +29,7 @@
 //#include "dap.h"
 //#include "dap_mem_ap.h"
 #include "samd51_dap.h"
+//#include "test_fw.h"
 
 #define SWDIO 9
 #define SWCLK 8
@@ -138,6 +139,31 @@ void test_mbist() {
   }
 }
 
+void test_read_firmware() {
+  const int test_size = 4096;
+  uint8_t fw_data[test_size];
+  samd_read_flash_memory(0x00, fw_data, test_size);
+  Serial.println(" ");
+  for (int i = 0; i < test_size; i ++) {
+    if (fw_data[i] < 0x10) { Serial.print("0"); };
+    Serial.print(fw_data[i], HEX);
+    if (i%16 == 15) {
+      Serial.println();
+    }
+  }
+}
+
+void test_write_firmware() {
+  samd_prepare_for_programming();
+  //
+  // REPLACE THIS WITH ACTUAL FIRMWARE!
+  const int fw_contents_len = 128;
+  uint8_t fw_contents[fw_contents_len];
+  memset(fw_contents, 0, fw_contents_len);
+  //
+  samd_write_flash(0, fw_contents, fw_contents_len);
+  samd_end_programming();
+}
 
 void setup() {
   Serial.begin(115200);
@@ -261,7 +287,12 @@ void setup() {
   // test_read_nvm_cpu_sn();
   // test_rw_user_memory();
 
-  test_mbist();
+  //test_mbist();
+
+  //test_read_firmware();
+  test_chip_erase();
+  test_write_firmware();
+  test_read_firmware();
 }
 
 void loop() {

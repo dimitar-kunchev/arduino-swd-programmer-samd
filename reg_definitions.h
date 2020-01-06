@@ -212,6 +212,7 @@ typedef union {
 
 #define USER_ROW_ADDR 0x00804000
 #define USER_ROW_SIZE 32
+#define FLASH_START_ADDR  0x00
 
 #define DAP_NVMCTRL_BASE      (0x41004000)
 #define DAP_NVMCTRL_CTRLA     (DAP_NVMCTRL_BASE + 0x00)
@@ -220,7 +221,18 @@ typedef union {
 ///#define DAP_NVMCTRL_STATUS    (DAP_NVMCTRL_BASE + 0x12) // use the INTFLAG instead and offset by 16 bits. That is because we use 32-bit read/writes
 #define DAP_NVMCTRL_ADDR      (DAP_NVMCTRL_BASE + 0x14)
 
+#define DAP_NVMCTRL_CTRLA_WMODE_Pos 4
 #define DAP_NVMCTRL_CTRLA_WMODE_Msk (0x3ul << 4)
+#define DAP_NVMCTRL_CTRLA_WMODE(val)  (DAP_NVMCTRL_CTRLA_WMODE_Msk & ((value) << DAP_NVMCTRL_CTRLA_WMODE_Pos))
+#define   DAP_NVMCTRL_CTRLA_WMODE_MAN_Val     (0x0ul)   /**< \brief (NVMCTRL_CTRLA) Manual Write */
+#define   DAP_NVMCTRL_CTRLA_WMODE_ADW_Val     (0x1ul)   /**< \brief (NVMCTRL_CTRLA) Automatic Double Word Write */
+#define   DAP_NVMCTRL_CTRLA_WMODE_AQW_Val     (0x2ul)   /**< \brief (NVMCTRL_CTRLA) Automatic Quad Word */
+#define   DAP_NVMCTRL_CTRLA_WMODE_AP_Val      (0x3ul)   /**< \brief (NVMCTRL_CTRLA) Automatic Page Write */
+#define DAP_NVMCTRL_CTRLA_WMODE_MAN     (DAP_NVMCTRL_CTRLA_WMODE_MAN_Val   << DAP_NVMCTRL_CTRLA_WMODE_Pos)
+#define DAP_NVMCTRL_CTRLA_WMODE_ADW     (DAP_NVMCTRL_CTRLA_WMODE_ADW_Val   << DAP_NVMCTRL_CTRLA_WMODE_Pos)
+#define DAP_NVMCTRL_CTRLA_WMODE_AQW     (DAP_NVMCTRL_CTRLA_WMODE_AQW_Val   << DAP_NVMCTRL_CTRLA_WMODE_Pos)
+#define DAP_NVMCTRL_CTRLA_WMODE_AP      (DAP_NVMCTRL_CTRLA_WMODE_AP_Val    << DAP_NVMCTRL_CTRLA_WMODE_Pos)
+
 #define DAP_NVMCTRL_CTRLA_AUTOWS    (1<<2)
 #define DAP_NVMCTRL_CTRLB_CMDEX_Pos        8
 #define DAP_NVMCTRL_CTRLB_CMDEX_KEY_Val    (0xA5ul)
@@ -253,6 +265,7 @@ typedef union {
 #define   DAP_NVMCTRL_CTRLB_CMD_LSEER_Val     0x36   /**< \brief (NVMCTRL_CTRLB) Lock access to the SmartEEPROM Register Address Space (above 64KB) */
 #define   DAP_NVMCTRL_CTRLB_CMD_USEER_Val     0x37   /**< \brief (NVMCTRL_CTRLB) Unlock access to the SmartEEPROM Register Address Space (above 64KB) */
 #define DAP_NVMCTRL_CTRLB_CMDEX_EP      (DAP_NVMCTRL_CTRLB_CMD_EP_Val      << DAP_NVMCTRL_CTRLB_CMD_Pos)
+#define DAP_NVMCTRL_CTRLB_CMD_WP        (DAP_NVMCTRL_CTRLB_CMD_WP_Val      << DAP_NVMCTRL_CTRLB_CMD_Pos)
 #define DAP_NVMCTRL_CTRLB_CMD_WQW       (DAP_NVMCTRL_CTRLB_CMD_WQW_Val     << DAP_NVMCTRL_CTRLB_CMD_Pos)
 #define DAP_NVMCTRL_CTRLB_CMD_PBC       (DAP_NVMCTRL_CTRLB_CMD_PBC_Val     << DAP_NVMCTRL_CTRLB_CMD_Pos)
 

@@ -47,6 +47,8 @@ bool samd_power_up_debug_domains();
 // Stop the core
 void samd_stop_core();
 
+/// DSU FUNCTIONS
+
 // Read the device identifier from DSU memory area
 uint32_t samd_read_dsu_did();
 
@@ -63,6 +65,11 @@ inline uint8_t samd_read_dsu_status_a() {
 inline uint8_t samd_read_dsu_status_b() {
   return (samd_read_dsu_ctrl_status() >> 16) & 0xff;
 }
+
+/// I cannot tell if this is working or not. I think it completes too quickly really. Also at the end there is BUS ERROR flag in the DSU
+bool samd_perform_mbist(uint32_t mem_start_address, uint32_t mem_length);
+
+/// MEMORY FUNCTIONS
 
 // Read the user memory block from the 
 bool samd_read_user_mem(uint8_t * user_bytes);
@@ -83,6 +90,14 @@ bool samd_chip_erase();
 /// read the unique serial number - 128 bits (16 bytes)
 bool samd_read_serial_number(uint8_t * res);
 
+inline bool samd_read_flash_memory(uint32_t offset_address, uint8_t * buf, uint32_t length) {
+  return dap_read_mem_block(0x00 + offset_address, buf, length);
+}
+
+bool samd_prepare_for_programming();
+bool samd_write_flash(uint32_t offset_address, const uint8_t * buf, uint32_t length);
+bool samd_end_programming();
+
 // helper function
 
 inline uint32_t bswap32(uint32_t val) {
@@ -90,8 +105,6 @@ inline uint32_t bswap32(uint32_t val) {
   return (val << 16) | (val >> 16);
 }
 
-/// I cannot tell if this is working or not. I think it completes too quickly really. Also at the end there is BUS ERROR flag in the DSU
-bool samd_perform_mbist(uint32_t mem_start_address, uint32_t mem_length);
 
 #ifdef __cplusplus
 }

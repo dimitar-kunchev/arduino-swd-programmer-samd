@@ -65,7 +65,42 @@ uint32_t samd_write_dsu_ctrl_status(uint32_t val) {
   return dap_write_word(DAP_DSU_CTRL_STATUS, val);
 }
 
+bool samd_perform_mbist(uint32_t mem_start_address, uint32_t mem_length) {
+  // write address start to DSU ADDR
+  dap_write_word(DAP_DSU_ADDR, mem_start_address << 2); // AMOD=0: exit on error
+  // write memory length to DSU LENGTH
+  dap_write_word(DAP_DSU_LENGTH, mem_length<<2);
+  // write 1 to DSU MBIST
+  uint32_t ctrl_status = samd_read_dsu_ctrl_status();
+  ctrl_status |= 1 << 3;
+  //Serial.print("Set DSU CTRL/STATUS: 0x"); Serial.println(ctrl_status, HEX);
+  samd_write_dsu_ctrl_status(ctrl_status);
 
+  while (true) {
+    //delay(1);
+    ctrl_status = samd_read_dsu_ctrl_status();
+    //Serial.print("CST: 0x"); Serial.println(ctrl_status, HEX);
+    if (ctrl_status & (1 << 8)) { // check the DONE bit
+      //Serial.println("Done");
+      uint32_t tmp;
+      dap_read_word(DAP_DSU_ADDR, &tmp);
+      //Serial.print("ADDR reg contents: 0x"); Serial.println(tmp, HEX);
+      dap_read_word(DAP_DSU_DATA, &tmp);
+      tmp = dap_read_read_buf();
+      //Serial.print("DATA reg contents: 0x"); Serial.println(tmp, HEX);
+      if (ctrl_status & ( 1 << 11)) {
+        //Serial.println("MBIST detected errors");
+        return false;
+      } else {
+        //Serial.println("MBIST found no problems");
+//        if (ctrl_status & (1 << 10)) {
+//          Serial.println("However there is DSU.BERR (bus error) flag raised");
+//        }
+        return true;
+      }
+    }
+  } 
+}
 /*
  * NVMCTRL FUNCTIONS
  */
@@ -123,15 +158,16 @@ static bool samd_nvmctrl_wait_intflag_done(int cnt) {
   return done_bit_set;
 }
 
-static bool samd_nvmctrl_ctrla_clr_wmode_and_set_autows() {
+static bool samd_nvmctrl_ctrla_set_wmode_and_set_autows(int8_t wmode) {
   uint32_t tmp;
   if (!dap_read_word(DAP_NVMCTRL_CTRLA, &tmp)) {
     return false;
   }
-  // Serial.print("DAP CTRLA: 0x"); Serial.println(tmp, HEX);
+  Serial.print("DAP CTRLA: 0x"); Serial.println(tmp, HEX);
 
-  // Serial.println("Clr wmode, set autows");
+  Serial.println("set autows, wmode");
   tmp = (tmp & (~DAP_NVMCTRL_CTRLA_WMODE_Msk));
+  tmp |= (wmode & DAP_NVMCTRL_CTRLA_WMODE_Msk);
   tmp |= DAP_NVMCTRL_CTRLA_AUTOWS;
   
   if (!dap_write_word(DAP_NVMCTRL_CTRLA, tmp)) {
@@ -143,10 +179,9 @@ static bool samd_nvmctrl_ctrla_clr_wmode_and_set_autows() {
   if (!dap_read_word(DAP_NVMCTRL_CTRLA, &tmp2)) {
     return false;
   }
-  // tmp2 = dap_read_read_buf();
-  // Serial.print("DAP CTRLA: 0x"); Serial.println(tmp, HEX);
+  tmp2 = dap_read_read_buf();
+  Serial.print("DAP CTRLA: 0x"); Serial.println(tmp, HEX);
   return tmp == tmp2;
-  
 }
 
 bool samd_write_user_mem(uint32_t address_offset, uint8_t * data, uint32_t length) {
@@ -155,7 +190,7 @@ bool samd_write_user_mem(uint32_t address_offset, uint8_t * data, uint32_t lengt
   samd_nvmctrl_wait_status_ready(100);
   
   // Set NVMCTRL.CTRLA.WMODE to zero for manual write
-  if (!samd_nvmctrl_ctrla_clr_wmode_and_set_autows()) {
+  if (!samd_nvmctrl_ctrla_set_wmode_and_set_autows(DAP_NVMCTRL_CTRLA_WMODE_MAN)) {
     // Serial.println("Failed");
     return false;
   }
@@ -197,7 +232,7 @@ bool samd_write_user_mem(uint32_t address_offset, uint8_t * data, uint32_t lengt
 
 bool samd_erase_user_mem() {
   samd_nvmctrl_wait_status_ready(100);
-  samd_nvmctrl_ctrla_clr_wmode_and_set_autows();
+  samd_nvmctrl_ctrla_set_wmode_and_set_autows(DAP_NVMCTRL_CTRLA_WMODE_MAN);
   dap_write_word(DAP_NVMCTRL_ADDR, USER_ROW_ADDR);
   dap_write_word(DAP_NVMCTRL_CTRLB, DAP_NVMCTRL_CTRLB_CMDEX_KEY | DAP_NVMCTRL_CTRLB_CMDEX_EP);
   samd_nvmctrl_wait_status_ready(100);
@@ -251,43 +286,56 @@ bool samd_read_serial_number(uint8_t * res) {
   return true;
 }
 
-/*
- * OTHER FUNCTIONS
- */
+/// Programming functions
 
-bool samd_perform_mbist(uint32_t mem_start_address, uint32_t mem_length) {
-  // write address start to DSU ADDR
-  dap_write_word(DAP_DSU_ADDR, mem_start_address << 2); // AMOD=0: exit on error
-  // write memory length to DSU LENGTH
-  dap_write_word(DAP_DSU_LENGTH, mem_length<<2);
-  // write 1 to DSU MBIST
-  uint32_t ctrl_status = samd_read_dsu_ctrl_status();
-  ctrl_status |= 1 << 3;
-  //Serial.print("Set DSU CTRL/STATUS: 0x"); Serial.println(ctrl_status, HEX);
-  samd_write_dsu_ctrl_status(ctrl_status);
+bool samd_prepare_for_programming() {
+  // Switch NVMCTRL to auto page writing
+  if (!samd_nvmctrl_ctrla_set_wmode_and_set_autows(DAP_NVMCTRL_CTRLA_WMODE_MAN)) {
+    // Serial.println("Failed");
+    return false;
+  }
+  samd_nvmctrl_wait_status_ready(100);
+}
 
-  while (true) {
-    //delay(1);
-    ctrl_status = samd_read_dsu_ctrl_status();
-    //Serial.print("CST: 0x"); Serial.println(ctrl_status, HEX);
-    if (ctrl_status & (1 << 8)) { // check the DONE bit
-      //Serial.println("Done");
-      uint32_t tmp;
-      dap_read_word(DAP_DSU_ADDR, &tmp);
-      //Serial.print("ADDR reg contents: 0x"); Serial.println(tmp, HEX);
-      dap_read_word(DAP_DSU_DATA, &tmp);
-      tmp = dap_read_read_buf();
-      //Serial.print("DATA reg contents: 0x"); Serial.println(tmp, HEX);
-      if (ctrl_status & ( 1 << 11)) {
-        //Serial.println("MBIST detected errors");
-        return false;
-      } else {
-        //Serial.println("MBIST found no problems");
-//        if (ctrl_status & (1 << 10)) {
-//          Serial.println("However there is DSU.BERR (bus error) flag raised");
-//        }
-        return true;
-      }
+static bool samd_write_flash_row(uint32_t address, const uint8_t * buf, uint32_t length) {
+  Serial.print("Begin writing at 0x");  Serial.println(address, HEX);
+  uint32_t tmp;
+  for (int i = 0; i < length; i += 4) {
+    memcpy(&tmp, &(buf[i]), 4);
+    dap_write_word(address, tmp);
+    address += 4;
+  }
+  dap_write_word(DAP_NVMCTRL_CTRLB, DAP_NVMCTRL_CTRLB_CMDEX_KEY | DAP_NVMCTRL_CTRLB_CMD_WP);
+    
+  // Wait for STATUS.READY and INTFLAG.DONE
+  samd_nvmctrl_wait_status_ready(100);
+  samd_nvmctrl_wait_intflag_done(1000);
+  return true;
+}
+
+bool samd_write_flash(uint32_t offset_address, const uint8_t * buf, uint32_t length) {
+//  uint32_t tmp;
+//  uint32_t target_address = FLASH_START_ADDR + offset_address;
+//
+//  dap_write_word(DAP_NVMCTRL_ADDR, target_address);
+//  for (int i = 0; i < length; i += 4) {
+//    memcpy(&tmp, &(buf[i]), 4);
+//    if (!dap_write_word(target_address, tmp)) {
+//      delay(100);
+//      dap_write_word(target_address, tmp);
+//    }
+//    target_address += 4;
+//  }
+//  samd_nvmctrl_wait_status_ready(100);
+//  samd_nvmctrl_wait_intflag_done(100);
+
+  for (int i = 0; i < length; i += 512) {
+    if (!samd_write_flash_row(FLASH_START_ADDR + offset_address + i, &(buf[i]), min(512, length-i))) {
+      return false;
     }
-  } 
+  }
+  return true;
+}
+bool samd_end_programming() {
+  
 }
