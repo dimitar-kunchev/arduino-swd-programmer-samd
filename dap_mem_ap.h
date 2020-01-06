@@ -33,6 +33,8 @@
   * 
   * These are intended only to simplify further development and reducing risk of
   * errors when accessing registers.
+  * 
+  * What bugs me is I have to read RDBUF every time when I try to read DRW or CSW. That makes no sense...
   */
 
 #include <Arduino.h>
@@ -64,7 +66,12 @@ inline uint32_t dap_read_csw() {
 
 // Read the DRW AP register
 inline bool dap_read_drw(uint32_t * res) {
-   return dap_read_reg(SWD_AP_REG_DRW, true, res);
+   // return dap_read_reg(SWD_AP_REG_DRW, true, res);
+   if (dap_read_reg(SWD_AP_REG_DRW, true, res)) {
+    *res = dap_read_read_buf();
+    return true;
+   }
+   return false;
 }
 
 // Write the DRW AP register

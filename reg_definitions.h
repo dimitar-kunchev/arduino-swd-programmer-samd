@@ -213,4 +213,47 @@ typedef union {
 #define USER_ROW_ADDR 0x00804000
 #define USER_ROW_SIZE 32
 
+#define DAP_NVMCTRL_BASE      (0x41004000)
+#define DAP_NVMCTRL_CTRLA     (DAP_NVMCTRL_BASE + 0x00)
+#define DAP_NVMCTRL_CTRLB     (DAP_NVMCTRL_BASE + 0x04)
+#define DAP_NVMCTRL_INTFLAG   (DAP_NVMCTRL_BASE + 0x10)
+///#define DAP_NVMCTRL_STATUS    (DAP_NVMCTRL_BASE + 0x12) // use the INTFLAG instead and offset by 16 bits. That is because we use 32-bit read/writes
+#define DAP_NVMCTRL_ADDR      (DAP_NVMCTRL_BASE + 0x14)
+
+#define DAP_NVMCTRL_CTRLA_WMODE_Msk (0x3ul << 4)
+#define DAP_NVMCTRL_CTRLA_AUTOWS    (1<<2)
+#define DAP_NVMCTRL_CTRLB_CMDEX_Pos        8
+#define DAP_NVMCTRL_CTRLB_CMDEX_KEY_Val    (0xA5ul)
+#define DAP_NVMCTRL_CTRLB_CMDEX_KEY        (DAP_NVMCTRL_CTRLB_CMDEX_KEY_Val << DAP_NVMCTRL_CTRLB_CMDEX_Pos)
+#define DAP_NVMCTRL_CTRLB_CMD_Pos       0
+#define DAP_NVMCTRL_CTRLB_CMD_Msk       (0x7Ful << DAPNVMCTRL_CTRLB_CMD_Pos)
+#define DAP_NVMCTRL_CTRLB_CMD(val)      (DAP_NVMCTRL_CTRLB_CMD_Msk & ((val) << DAP_NVMCTRL_CTRLB_CMD_Pos))
+#define   DAP_NVMCTRL_CTRLB_CMD_EP_Val        0x0   /**< \brief (NVMCTRL_CTRLB) Erase Page - Only supported in the USER and AUX pages. */
+#define   DAP_NVMCTRL_CTRLB_CMD_EB_Val        0x1   /**< \brief (NVMCTRL_CTRLB) Erase Block - Erases the block addressed by the ADDR register, not supported in the user page */
+#define   DAP_NVMCTRL_CTRLB_CMD_WP_Val        0x3   /**< \brief (NVMCTRL_CTRLB) Write Page - Writes the contents of the page buffer to the page addressed by the ADDR register, not supported in the user page */
+#define   DAP_NVMCTRL_CTRLB_CMD_WQW_Val       0x4   /**< \brief (NVMCTRL_CTRLB) Write Quad Word - Writes a 128-bit word at the location addressed by the ADDR register. */
+#define   DAP_NVMCTRL_CTRLB_CMD_SWRST_Val     0x10   /**< \brief (NVMCTRL_CTRLB) Software Reset - Power-Cycle the NVM memory and replay the device automatic calibration procedure and resets the module configuration registers */
+#define   DAP_NVMCTRL_CTRLB_CMD_LR_Val        0x11   /**< \brief (NVMCTRL_CTRLB) Lock Region - Locks the region containing the address location in the ADDR register. */
+#define   DAP_NVMCTRL_CTRLB_CMD_UR_Val        0x12   /**< \brief (NVMCTRL_CTRLB) Unlock Region - Unlocks the region containing the address location in the ADDR register. */
+#define   DAP_NVMCTRL_CTRLB_CMD_SPRM_Val      0x13   /**< \brief (NVMCTRL_CTRLB) Sets the power reduction mode. */
+#define   DAP_NVMCTRL_CTRLB_CMD_CPRM_Val      0x14   /**< \brief (NVMCTRL_CTRLB) Clears the power reduction mode. */
+#define   DAP_NVMCTRL_CTRLB_CMD_PBC_Val       0x15   /**< \brief (NVMCTRL_CTRLB) Page Buffer Clear - Clears the page buffer. */
+#define   DAP_NVMCTRL_CTRLB_CMD_SSB_Val       0x16   /**< \brief (NVMCTRL_CTRLB) Set Security Bit */
+#define   DAP_NVMCTRL_CTRLB_CMD_BKSWRST_Val   0x17   /**< \brief (NVMCTRL_CTRLB) Bank swap and system reset, if SMEE is used also reallocate SMEE data into the opposite BANK */
+#define   DAP_NVMCTRL_CTRLB_CMD_CELCK_Val     0x18   /**< \brief (NVMCTRL_CTRLB) Chip Erase Lock - DSU.CE command is not available */
+#define   DAP_NVMCTRL_CTRLB_CMD_CEULCK_Val    0x19   /**< \brief (NVMCTRL_CTRLB) Chip Erase Unlock - DSU.CE command is available */
+#define   DAP_NVMCTRL_CTRLB_CMD_SBPDIS_Val    0x1A   /**< \brief (NVMCTRL_CTRLB) Sets STATUS.BPDIS, Boot loader protection is discarded until CBPDIS is issued or next start-up sequence */
+#define   DAP_NVMCTRL_CTRLB_CMD_CBPDIS_Val    0x1B   /**< \brief (NVMCTRL_CTRLB) Clears STATUS.BPDIS, Boot loader protection is not discarded */
+#define   DAP_NVMCTRL_CTRLB_CMD_ASEES0_Val    0x30   /**< \brief (NVMCTRL_CTRLB) Activate SmartEEPROM Sector 0, deactivate Sector 1 */
+#define   DAP_NVMCTRL_CTRLB_CMD_ASEES1_Val    0x31   /**< \brief (NVMCTRL_CTRLB) Activate SmartEEPROM Sector 1, deactivate Sector 0 */
+#define   DAP_NVMCTRL_CTRLB_CMD_SEERALOC_Val  0x32   /**< \brief (NVMCTRL_CTRLB) Starts SmartEEPROM sector reallocation algorithm */
+#define   DAP_NVMCTRL_CTRLB_CMD_SEEFLUSH_Val  0x33   /**< \brief (NVMCTRL_CTRLB) Flush SMEE data when in buffered mode */
+#define   DAP_NVMCTRL_CTRLB_CMD_LSEE_Val      0x34   /**< \brief (NVMCTRL_CTRLB) Lock access to SmartEEPROM data from any mean */
+#define   DAP_NVMCTRL_CTRLB_CMD_USEE_Val      0x35   /**< \brief (NVMCTRL_CTRLB) Unlock access to SmartEEPROM data */
+#define   DAP_NVMCTRL_CTRLB_CMD_LSEER_Val     0x36   /**< \brief (NVMCTRL_CTRLB) Lock access to the SmartEEPROM Register Address Space (above 64KB) */
+#define   DAP_NVMCTRL_CTRLB_CMD_USEER_Val     0x37   /**< \brief (NVMCTRL_CTRLB) Unlock access to the SmartEEPROM Register Address Space (above 64KB) */
+#define DAP_NVMCTRL_CTRLB_CMDEX_EP      (DAP_NVMCTRL_CTRLB_CMD_EP_Val      << DAP_NVMCTRL_CTRLB_CMD_Pos)
+#define DAP_NVMCTRL_CTRLB_CMD_WQW       (DAP_NVMCTRL_CTRLB_CMD_WQW_Val     << DAP_NVMCTRL_CTRLB_CMD_Pos)
+#define DAP_NVMCTRL_CTRLB_CMD_PBC       (DAP_NVMCTRL_CTRLB_CMD_PBC_Val     << DAP_NVMCTRL_CTRLB_CMD_Pos)
+
 #endif // __REG_DEFINITIONS__

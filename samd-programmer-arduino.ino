@@ -36,6 +36,108 @@
 
 ///
 
+void test_fuses_read() {
+  Serial.println("Read fuses");
+  uint8_t fuse_bytes[32];
+  samd_read_fuses(fuse_bytes);
+  Serial.println("Fuses contents:");
+  for (int i = 0; i < 32; i ++) {
+    if (i%4 == 0) {
+      Serial.print(" 0x");
+    }
+    Serial.print(fuse_bytes[i], HEX);
+  }
+  Serial.println();
+}
+
+void test_chip_erase() {
+  Serial.println("Erasing chip...");
+  samd_chip_erase();
+  Serial.println("Done, chip erased");
+}
+
+void test_read_nvm_cpu_sn() {
+  uint8_t serial_number[16];
+  if (samd_read_serial_number(serial_number)) {
+    Serial.print("S/N: ");
+    for (uint8_t i = 0; i < 16; i ++) {
+      if (serial_number[i] < 0x10) {
+        Serial.print("0");
+      }
+      Serial.print(serial_number[i], HEX);
+    }
+    Serial.println();
+  } else {
+    Serial.println("Error reading serial number");
+  }
+}
+
+void test_rw_user_memory(){ 
+
+  //samd_perform_mbist(0x20000000, 256*1024);
+
+  samd_erase_user_mem();
+
+  const int bytes_to_test = 32;
+  const int offset_to_test = 0x100;
+  uint8_t tmp_user_area_buff[bytes_to_test];
+  dap_read_mem_block(USER_ROW_ADDR + offset_to_test, tmp_user_area_buff, bytes_to_test);
+
+  // read
+  Serial.print("Sample user memory, offset 0x"); Serial.println(offset_to_test, HEX);
+  for (int i = 0; i < bytes_to_test; i ++) {
+    if (tmp_user_area_buff[i] < 0x10) {
+      Serial.print("0");
+    }
+    Serial.print(tmp_user_area_buff[i], HEX);
+    if (i % 4 == 3) { Serial.print (" "); }
+  }
+  Serial.println();
+
+  // flip the words
+  for (int i = 0; i < bytes_to_test; i +=4) {
+    uint32_t t;
+    memcpy(&t, &(tmp_user_area_buff[i]), 4);
+    t = bswap32(t);
+    memcpy(&(tmp_user_area_buff[i]), &t, 4);
+  }
+
+  // change
+  memset(tmp_user_area_buff, 0x00, 4);
+  memset(tmp_user_area_buff+4, 0x10, 4);
+  memset(tmp_user_area_buff+8, 0x01, 4);
+  memset(tmp_user_area_buff+12, 0b01010101, 4);
+  memset(tmp_user_area_buff+16, 0b10101010, 4);
+  memset(tmp_user_area_buff+20, 0b10101010, 4);
+  memset(tmp_user_area_buff+24, 0xFFFFFFFF, 4);
+  memset(tmp_user_area_buff+28, 0x00000000, 4);
+
+  // write
+  samd_write_user_mem(offset_to_test, tmp_user_area_buff, bytes_to_test);
+
+  // read 
+
+  dap_read_mem_block(USER_ROW_ADDR+offset_to_test, tmp_user_area_buff, bytes_to_test);
+
+  Serial.print("Sample user memory, offset 0x"); Serial.println(offset_to_test, HEX);
+  for (int i = 0; i < bytes_to_test; i ++) {
+    if (tmp_user_area_buff[i] < 0x10) {
+      Serial.print("0");
+    }
+    Serial.print(tmp_user_area_buff[i], HEX);
+    if (i % 4 == 3) { Serial.print (" "); }
+  }
+  Serial.println();
+}
+
+void test_mbist() {
+  if (samd_perform_mbist(0x20000000, 256*1024)) {
+    Serial.println("MBIST ran OK");
+  } else {
+    Serial.println("MBIST RETURNED ERROR!");
+  }
+}
+
 
 void setup() {
   Serial.begin(115200);
@@ -153,46 +255,13 @@ void setup() {
   if (dsu_status_b & (0x01 << 1)) {
     Serial.println("DSU reports debugger connected - OK");
   }
-  
-  /*
-  uint32_t dsu_ctrl_status = samd_read_dsu_ctrl_status();
-  Serial.print("DSU Ctrl Status: 0x"); Serial.println(dsu_ctrl_status, HEX);
-  if (dsu_ctrl_status & 0x00010000) {
-    // Note that the result is LSB first. 0x8120000 is what I usually get. First byte (MSB) of that is 0x03 offset in the register (STATUSB), second is 0x02, etc. So that value means DBGPRES and HPE are set (and something in the reserved space)
-  }*/
 
-  //samd_read_user_mem(user_mem);
+  // test_fuses_read();
+  // test_chip_erase();
+  // test_read_nvm_cpu_sn();
+  // test_rw_user_memory();
 
-  /*
-  Serial.println("Read fuses");
-  uint8_t fuse_bytes[32];
-  samd_read_fuses(fuse_bytes);
-  Serial.println("Fuses contents:");
-  for (int i = 0; i < 32; i ++) {
-    if (i%4 == 0) {
-      Serial.print(" 0x");
-    }
-    Serial.print(fuse_bytes[i], HEX);
-  }
-  Serial.println();*/
-
-  // erase chip
-  //Serial.println("Erasing chip...");
-  //samd_chip_erase();
-  //Serial.println("Done, chip erased");
-
-  uint8_t serial_number[16];
-  if (samd_read_serial_number(serial_number)) {
-    Serial.print("S/N: ");
-    for (uint8_t i = 0; i < 16; i ++) {
-      Serial.print(serial_number[i], HEX);
-    }
-    Serial.println();
-  } else {
-    Serial.println("Error reading serial number");
-  }
-
-  //samd_perform_mbist(0x20000000, 256*1024);
+  test_mbist();
 }
 
 void loop() {

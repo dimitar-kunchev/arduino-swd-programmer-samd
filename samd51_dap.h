@@ -66,7 +66,17 @@ inline uint8_t samd_read_dsu_status_b() {
 
 // Read the user memory block from the 
 bool samd_read_user_mem(uint8_t * user_bytes);
+/// ERASE THE USER MEMORY AREA! PLEASE MAKE SURE YOU READ THE FUSES AND CALIBRATION DATA AND WRITE THEM BACK AGAIN AFTER ERASING!
+bool samd_erase_user_mem();
+// Write the the user area of the memory. writes are quad-word, so bytes length MUST BE MULTIPLE OF 16!
+bool samd_write_user_mem(uint32_t address_offset, uint8_t * data, uint32_t length);
+
 bool samd_read_fuses(uint8_t * fuse_bytes);
+
+// This is just and example really.
+inline bool samd_write_fuses(uint8_t * fuse_bytes) {
+  samd_write_user_mem(0, fuse_bytes, 16);
+}
 
 bool samd_chip_erase();
 
@@ -80,7 +90,7 @@ inline uint32_t bswap32(uint32_t val) {
   return (val << 16) | (val >> 16);
 }
 
-/// NOT WORKING. YET.
+/// I cannot tell if this is working or not. I think it completes too quickly really. Also at the end there is BUS ERROR flag in the DSU
 bool samd_perform_mbist(uint32_t mem_start_address, uint32_t mem_length);
 
 #ifdef __cplusplus
